@@ -39,7 +39,14 @@ fn row(st: State, n: Live) -> impl IntoView {
     let class = move || {
         let on = level == Level::Scene && st.scene.get() == Some(id);
         let hl = level == Level::Beat && st.highlighted(id);
-        format!("row {kind}{}{}{}", if on { " on" } else { "" }, if hl { " hl" } else { "" }, dnd::class(st, id))
+        let warns = level == Level::Scene && st.scene_warns(id);
+        format!(
+            "row {kind}{}{}{}{}",
+            if on { " on" } else { "" },
+            if hl { " hl" } else { "" },
+            if warns { " warns" } else { "" },
+            dnd::class(st, id)
+        )
     };
     let prefix = (level == Level::Act).then(|| format!("{} · ", n.label));
     let label = move || st.story.with(|s| s.label(id));

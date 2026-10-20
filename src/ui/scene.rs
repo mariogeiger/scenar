@@ -1,12 +1,13 @@
 //! The scene on screen: its act and title, and its beats as a stack of text
-//! fields, each numbered in the margin and tagged below with its elements.
+//! fields, each numbered in the left margin and annotated in the right one
+//! with its elements and where their dependencies lead.
 
 use leptos::prelude::*;
 use scenar::engine::Kind;
 use scenar::model::Side;
 
 use super::tool;
-use crate::state::{State, dnd};
+use crate::state::{Note, State, dnd};
 
 #[component]
 pub fn SceneView() -> impl IntoView {
@@ -67,32 +68,26 @@ fn Beat(id: u64) -> impl IntoView {
     let text = Memo::new(move |_| st.story.with(|s| s.find(id).map(|n| n.text.clone()).unwrap_or_default()));
     let number = move || st.live_node(id).map(|n| n.number);
     let class = move || format!("beat{}{}", if st.highlighted(id) { " hl" } else { "" }, dnd::class(st, id));
-    let tags = move || {
-        let Some(beat) = st.beat_index(id) else { return Vec::new() };
-        st.analysis.with(|a| {
-            a.in_beat(beat)
-                .into_iter()
-                .map(|(e, kind)| (a.elements[e].name.clone(), a.elements[e].key.clone(), kind))
-                .collect::<Vec<_>>()
-        })
-    };
-    let tag = move |(i, (name, key, kind)): (usize, (String, String, Kind))| {
-        let kind_class = match kind {
+    let notes = Memo::new(move |_| st.notes(id));
+    let note = move |n: Note| {
+        let kind = match n.kind {
             Kind::Setup => "setup",
             Kind::Mention => "mention",
             Kind::Payoff => "payoff",
         };
         let focused = {
-            let key = key.clone();
+            let key = n.key.clone();
             move || st.focus.get().as_deref() == Some(key.as_str())
         };
+        let key = n.key;
         view! {
-            {(i > 0).then_some(" · ")}
-            <span class=format!("tag {kind_class}") class:focused=focused on:click=move |_| st.toggle_focus(key.clone())>
-                <b>{name}</b>
+            <div class=format!("note {kind}") class:warns=n.warns class:focused=focused
+                on:click=move |_| st.toggle_focus(key.clone())>
+                <b>{n.name}</b>
                 " "
-                {kind.verb()}
-            </span>
+                {n.kind.verb()}
+                {(!n.relation.is_empty()).then(|| view! { <br/><span class="relation">{n.relation}</span> })}
+            </div>
         }
     };
     view! {
@@ -102,34 +97,32 @@ fn Beat(id: u64) -> impl IntoView {
             on:dragover=move |ev| dnd::over(st, id, &ev)
             on:drop=move |ev| dnd::drop(st, &ev)
         >
-            <div
-                class="n"
-                draggable="true"
-                title="Glisser pour déplacer"
-                on:dragstart=move |ev| dnd::start(st, id, &ev)
-                on:dragend=move |_| dnd::end(st)
-            >
-                {number}
-            </div>
-            <div class="body">
-                <div class="grow" data-value=move || text.get()>
-                    <textarea
-                        rows="1"
-                        aria-label="Texte du beat"
-                        placeholder="Écris le beat. @nom déclare un élément, !nom le paie."
-                        prop:value=move || text.get()
-                        on:input=move |ev| st.story.update(|s| s.set_text(id, event_target_value(&ev)))
-                    ></textarea>
+            <div class="margin">
+                <div
+                    class="n"
+                    draggable="true"
+                    title="Glisser pour déplacer"
+                    on:dragstart=move |ev| dnd::start(st, id, &ev)
+                    on:dragend=move |_| dnd::end(st)
+                >
+                    {number}
                 </div>
-                <div class="tags">
-                    <span>{move || tags().into_iter().enumerate().map(tag).collect_view()}</span>
-                    <span class="tools">
-                        {tool("↑", "Monter", move || { st.story.update(|s| { s.step(id, Side::Before); }); })}
-                        {tool("↓", "Descendre", move || { st.story.update(|s| { s.step(id, Side::After); }); })}
-                        {tool("×", "Archiver", move || st.archive(id))}
-                    </span>
-                </div>
+                <span class="tools">
+                    {tool("↑", "Monter", move || { st.story.update(|s| { s.step(id, Side::Before); }); })}
+                    {tool("↓", "Descendre", move || { st.story.update(|s| { s.step(id, Side::After); }); })}
+                    {tool("×", "Archiver", move || st.archive(id))}
+                </span>
             </div>
+            <div class="grow" data-value=move || text.get()>
+                <textarea
+                    rows="1"
+                    aria-label="Texte du beat"
+                    placeholder="Écris le beat. @nom déclare un élément, !nom le paie."
+                    prop:value=move || text.get()
+                    on:input=move |ev| st.story.update(|s| s.set_text(id, event_target_value(&ev)))
+                ></textarea>
+            </div>
+            <div class="notes">{move || notes.get().into_iter().map(note).collect_view()}</div>
         </div>
     }
 }

@@ -51,7 +51,7 @@ Ces décisions appartiennent à Robin. Ne les change pas sans lui demander.
 
 ## Mise en ligne sur scenar.geiger.ink (Mario, 2026-10-20)
 
-Une séance de « grilling » avec Mario, à partir de deux maquettes. Ces décisions s'ajoutent à celles de Robin sans en changer aucune.
+Une séance de « grilling » avec Mario, à partir de deux maquettes. Les décisions 1 à 7 s'ajoutent à celles de Robin ; les 8 et 9 en remplacent deux, à la demande de Mario.
 
 | # | Question | Décision |
 |---|---|---|
@@ -62,3 +62,5 @@ Une séance de « grilling » avec Mario, à partir de deux maquettes. Ces déci
 | 5 | Code et déploiement | Repo `~/git/scenar` sur rtx-home, sans remote ; `deploy.sh` publie `dist/` dans `~/server/scenar/` |
 | 6 | Première ouverture | **Un seul scénario par navigateur**, prérempli avec l'exemple « Le Phare de Kerlaz » ; « Nouveau » le vide après confirmation |
 | 7 | Règles du moteur | Les trois de Robin, plus **« déclaré deux fois »** quand un élément a un second `@` |
+| 8 | Mise en page, après quatre maquettes | **Deux colonnes et des notes en marge** : la timeline à gauche ; chaque beat porte dans sa marge droite ses éléments et l'autre bout de leur dépendance (« → payé en II.1.2 », « ⚠ jamais payé ») ; les éléments et les warnings tiennent sur une ligne en bas de page, qui déplie la liste des éléments. **Remplace les 3 colonnes du tour 3 \#1 et les pastilles du tour 3 \#2** |
+| 9 | Style, après quatre maquettes | **Machine à écrire** : Courier Prime partout (hébergée sur le site, licence OFL), papier blanc, encre noire, accent rouge ; mode sombre conservé. **Remplace le design « bureau d'écrivain »** |

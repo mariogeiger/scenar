@@ -1,7 +1,7 @@
-//! The page: the timeline on the left, the scene in the middle, the
-//! elements and warnings on the right.
+//! The page: the timeline on the left, the scene on the right with its
+//! dependencies in the margin, and the elements and warnings in a footer.
 
-mod panel;
+mod footer;
 mod scene;
 mod timeline;
 
@@ -69,9 +69,7 @@ pub fn App() -> impl IntoView {
             <main>
                 <scene::SceneView/>
             </main>
-            <aside>
-                <panel::Panel/>
-            </aside>
+            <footer::Footer/>
         </div>
     }
 }

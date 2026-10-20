@@ -2,15 +2,21 @@
 //! with the confirmations they need.
 
 use leptos::prelude::*;
-use scenar::engine::{self, Analysis};
+use scenar::engine::{self, Analysis, Kind, Rule};
 use scenar::model::{Level, Live, Side, Story};
 
 use crate::storage;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Tab {
-    Elements,
-    Warnings,
+/// What the margin says about one element of a beat.
+#[derive(Clone, PartialEq)]
+pub struct Note {
+    pub name: String,
+    pub key: String,
+    pub kind: Kind,
+    /// Where the other end of the dependency is, or the warning that it
+    /// breaks; empty for a mention that breaks nothing.
+    pub relation: String,
+    pub warns: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -20,7 +26,8 @@ pub struct State {
     pub chosen: RwSignal<Option<u64>>,
     /// The key of the element whose beats are highlighted.
     pub focus: RwSignal<Option<String>>,
-    pub tab: RwSignal<Tab>,
+    /// Whether the list of elements is unfolded above the footer.
+    pub elements_open: RwSignal<bool>,
     pub dark: RwSignal<bool>,
     pub bin_open: RwSignal<bool>,
     /// The block being dragged, and where it would land.
@@ -60,7 +67,7 @@ impl State {
             story,
             chosen,
             focus: RwSignal::new(None),
-            tab: RwSignal::new(Tab::Elements),
+            elements_open: RwSignal::new(false),
             dark,
             bin_open: RwSignal::new(false),
             drag: RwSignal::new(None),
@@ -89,6 +96,60 @@ impl State {
         self.analysis.with(|a| {
             a.element(&key).is_some_and(|e| a.elements[e].occurrences.iter().any(|o| o.at.0 == beat))
         })
+    }
+
+    /// The margin notes of the beat `id`: one per element and kind, in text
+    /// order, each pointing at the other end of its dependency.
+    pub fn notes(&self, id: u64) -> Vec<Note> {
+        let Some(beat) = self.beat_index(id) else { return Vec::new() };
+        let label = |b: usize| self.beat_label(b);
+        self.analysis.with(|a| {
+            a.in_beat(beat)
+                .into_iter()
+                .map(|(e, kind)| {
+                    let el = &a.elements[e];
+                    let at = el.occurrences.iter().find(|o| o.at.0 == beat && o.kind == kind).map(|o| o.at);
+                    let first = |k: Kind| el.occurrences.iter().find(|o| o.kind == k).map(|o| o.at);
+                    let warning = a.warnings.iter().find(|w| {
+                        w.element == e
+                            && w.beat == beat
+                            && match w.rule {
+                                Rule::NeverPaid | Rule::DeclaredTwice => kind == Kind::Setup,
+                                Rule::PaidUndeclared => kind == Kind::Payoff,
+                                Rule::UsedBeforeDeclared => kind != Kind::Setup,
+                            }
+                    });
+                    let relation = match (warning.map(|w| w.rule), kind) {
+                        (Some(Rule::DeclaredTwice), _) => {
+                            format!("⚠ déjà déclaré en {}", first(Kind::Setup).map_or_else(String::new, |p| label(p.0)))
+                        }
+                        (Some(Rule::UsedBeforeDeclared), _) => format!(
+                            "⚠ utilisé avant d'être déclaré, en {}",
+                            first(Kind::Setup).map_or_else(String::new, |p| label(p.0))
+                        ),
+                        (Some(rule), _) => format!("⚠ {}", rule.message()),
+                        (None, Kind::Setup) => el
+                            .occurrences
+                            .iter()
+                            .find(|o| o.kind == Kind::Payoff && Some(o.at) > at)
+                            .map_or_else(String::new, |o| format!("→ payé en {}", label(o.at.0))),
+                        (None, Kind::Payoff) => {
+                            first(Kind::Setup).map_or_else(String::new, |p| format!("← déclaré en {}", label(p.0)))
+                        }
+                        (None, Kind::Mention) => String::new(),
+                    };
+                    Note { name: el.name.clone(), key: el.key.clone(), kind, relation, warns: warning.is_some() }
+                })
+                .collect()
+        })
+    }
+
+    /// Whether some warning points into the scene `id`.
+    pub fn scene_warns(&self, id: u64) -> bool {
+        let beats: Vec<usize> = self.live.with(|l| {
+            l.iter().filter(|n| n.parent == Some(id)).filter_map(|n| self.beat_index(n.id)).collect()
+        });
+        self.analysis.with(|a| a.warnings.iter().any(|w| beats.contains(&w.beat)))
     }
 
     pub fn toggle_focus(&self, key: String) {
