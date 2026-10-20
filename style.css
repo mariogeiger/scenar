@@ -86,6 +86,15 @@ input:focus, textarea:focus { outline: none; }
 .row.warns .label::after { content: " ▪"; color: var(--acc); }
 .tree-actions, .actions { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .tree-actions { margin-top: 16px; }
+a.row { color: inherit; text-decoration: none; }
+.kept { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin: 18px 0 6px; }
+.kept .hint, .kept .sync { color: var(--mute); font-size: 0.85em; }
+.kept .sync.warns { color: var(--acc); }
+.kept .peers { font-size: 0.85em; }
+.kept .who { color: var(--c); }
+.kept .who + .who::before { content: ", "; color: var(--mute); }
+.kept .name { width: 100%; font-size: 0.85em; }
+.kept .name::placeholder { color: var(--mute); font-style: italic; }
 .actions { margin-top: auto; padding-top: 24px; }
 
 /* The frieze: one band, partitioned into acts, scenes and beats, whose
@@ -134,6 +143,12 @@ input:focus, textarea:focus { outline: none; }
 .grow.sel { border-left-color: var(--mute); }
 .mirror { white-space: pre-wrap; color: transparent; }
 .mirror mark { color: transparent; background: color-mix(in srgb, var(--acc) 30%, transparent); border-radius: 2px; }
+/* The others' cursors, over the text: a bar of their colour that takes no
+   width, wide enough to point at, their name above it on hover. */
+.carets { z-index: 1; pointer-events: none; }
+.caret { position: relative; pointer-events: auto; padding: 0 4px; margin: 0 -4px; background: linear-gradient(var(--c), var(--c)) center / 2px 100% no-repeat; }
+.caret::after { content: attr(data-name); position: absolute; left: 0; bottom: 100%; padding: 0 4px; border-radius: 2px; background: var(--c); color: #fff; font-size: 0.7em; line-height: 1.5; white-space: nowrap; visibility: hidden; }
+.caret:hover::after { visibility: visible; }
 .grow > textarea, .grow > .mirror { grid-area: 1 / 1 / 2 / 2; font: 1em/1.75 var(--type); overflow-wrap: anywhere; padding: 0; margin: 0; }
 .grow > textarea { resize: none; overflow: hidden; }
 .grow > textarea::placeholder { color: var(--mute); font-style: italic; }

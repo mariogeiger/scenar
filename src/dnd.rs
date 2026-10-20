@@ -43,7 +43,7 @@ pub fn drop(st: State, ev: &DragEvent) {
     ev.prevent_default();
     ev.stop_propagation();
     if let (Some(id), Some((target, side))) = (st.drag.get_untracked(), st.drop.get_untracked()) {
-        st.story.update(|s| {
+        st.edit(|s| {
             s.place(id, target, side);
         });
     }

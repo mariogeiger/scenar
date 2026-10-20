@@ -1,11 +1,23 @@
-//! The browser's side of saving: the automatic copy in localStorage, the
-//! JSON file a story is exported to and imported from, and the theme.
+//! The browser's side of saving: the draft and the copies of shared links
+//! in localStorage, the links this browser opened, the name and colour it
+//! shows the others, the JSON file a story is exported to and imported
+//! from, and the theme.
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use scenar::model::Story;
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::{JsCast, JsValue};
 
 const STORY_KEY: &str = "scenar.story";
 const THEME_KEY: &str = "scenar.theme";
+const LINKS_KEY: &str = "scenar.links";
+const NAME_KEY: &str = "scenar.name";
+const COLOR_KEY: &str = "scenar.color";
+
+/// The colours a reader's cursor may take: distinct, and none the red of
+/// warnings.
+const COLORS: [&str; 8] = ["#2f64b0", "#2e8b57", "#d2691e", "#7b4fb3", "#00838f", "#8d6e63", "#c2185b", "#558b2f"];
 
 fn window() -> web_sys::Window {
     web_sys::window().expect("a browser window")
@@ -24,6 +36,83 @@ pub fn save(story: &Story) {
     if let Some(s) = local() {
         let _ = s.set_item(STORY_KEY, &story.to_json());
     }
+}
+
+fn get(key: &str) -> Option<String> {
+    local()?.get_item(key).ok().flatten()
+}
+
+fn set(key: &str, value: &str) {
+    if let Some(s) = local() {
+        let _ = s.set_item(key, value);
+    }
+}
+
+/// This browser's copy of the shared story `id`, as the update that
+/// recreates it.
+pub fn copy_of(id: &str) -> Option<Vec<u8>> {
+    STANDARD.decode(get(&format!("scenar.link.{id}"))?).ok()
+}
+
+pub fn keep_copy(id: &str, update: &[u8]) {
+    set(&format!("scenar.link.{id}"), &STANDARD.encode(update));
+}
+
+/// A shared link this browser opened, with the title its story had.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Link {
+    pub id: String,
+    pub title: String,
+}
+
+/// The links this browser opened, the latest first.
+pub fn links() -> Vec<Link> {
+    get(LINKS_KEY).and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default()
+}
+
+/// Records that the link `id` holds a story titled `title`, keeping its
+/// place in the list unless it is new.
+pub fn remember(id: &str, title: &str) {
+    let mut links = links();
+    match links.iter_mut().find(|l| l.id == id) {
+        Some(l) if l.title == title => return,
+        Some(l) => l.title = title.to_string(),
+        None => links.insert(0, Link { id: id.to_string(), title: title.to_string() }),
+    }
+    set(LINKS_KEY, &serde_json::to_string(&links).expect("links serialize"));
+}
+
+/// The name this browser shows the others, empty when none was given.
+pub fn name() -> String {
+    get(NAME_KEY).unwrap_or_default()
+}
+
+pub fn set_name(name: &str) {
+    set(NAME_KEY, name);
+}
+
+/// The colour of this browser's cursor, drawn once.
+pub fn color() -> String {
+    get(COLOR_KEY).unwrap_or_else(|| {
+        let color = COLORS[fastrand::usize(..COLORS.len())].to_string();
+        set(COLOR_KEY, &color);
+        color
+    })
+}
+
+/// The path of the page's address, such as `/` or `/k3PqZ8mWv2LxR7aT`.
+pub fn path() -> String {
+    window().location().pathname().unwrap_or_default()
+}
+
+/// The address of the page's server, such as `https://scenar.geiger.ink`.
+pub fn origin() -> String {
+    window().location().origin().unwrap_or_default()
+}
+
+/// Opens another page of the site.
+pub fn go(path: &str) {
+    let _ = window().location().assign(path);
 }
 
 /// Whether the dark theme was chosen, or else is the system's.

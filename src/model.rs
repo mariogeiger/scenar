@@ -241,18 +241,6 @@ impl Story {
         Some(id)
     }
 
-    pub fn set_title(&mut self, id: u64, title: String) {
-        if let Some(n) = self.find_mut(id) {
-            n.title = title;
-        }
-    }
-
-    pub fn set_text(&mut self, id: u64, text: String) {
-        if let Some(n) = self.find_mut(id) {
-            n.text = text;
-        }
-    }
-
     pub fn set_archived(&mut self, id: u64, archived: bool) {
         if let Some(n) = self.find_mut(id) {
             n.archived = archived;
@@ -419,7 +407,7 @@ mod tests {
         let mut s = story();
         assert!(s.place(6, 3, Side::Before));
         assert_eq!(children(&s, 2), [6, 3, 4]);
-        assert!(s.place(3, 7, Side::After) == false);
+        assert!(!s.place(3, 7, Side::After));
         assert!(s.place(5, 7, Side::Before));
         assert_eq!(children(&s, 7), [5]);
         assert!(s.place(4, 5, Side::After));
@@ -450,7 +438,7 @@ mod tests {
     #[test]
     fn untitled_beats_are_labelled_by_their_text() {
         let mut s = story();
-        s.set_text(3, "un deux trois quatre cinq six".into());
+        s.find_mut(3).unwrap().text = "un deux trois quatre cinq six".into();
         assert_eq!(s.label(3), "un deux trois quatre cinq…");
         assert_eq!(s.label(2), "n2");
     }

@@ -8,8 +8,9 @@
 use leptos::prelude::*;
 use scenar::engine::Kind;
 use scenar::model::Level;
+use scenar::shared::Field;
 
-use super::more;
+use super::{field, more};
 use crate::dnd;
 use crate::state::{Note, Popup, State};
 use crate::storage::dom_id;
@@ -26,7 +27,7 @@ pub fn Script() -> impl IntoView {
     let st = expect_context::<State>();
     let acts = children(st, None, Level::Act);
     let add_act = move |_| {
-        if let Some(act) = st.story.try_update(|s| s.add(None, None)).flatten() {
+        if let Some(act) = st.edit(|s| s.add(None, None)) {
             st.reveal(act);
         }
     };
@@ -62,18 +63,6 @@ pub fn Script() -> impl IntoView {
     }
 }
 
-/// A title the reader edits in place.
-fn title_input(st: State, id: u64, class: &'static str, label: &'static str) -> impl IntoView {
-    view! {
-        <input
-            class=format!("title {class}")
-            aria-label=label
-            prop:value=move || st.story.with(|s| s.find(id).map(|n| n.title.clone()).unwrap_or_default())
-            on:input=move |ev| st.story.update(|s| s.set_title(id, event_target_value(&ev)))
-        />
-    }
-}
-
 #[component]
 fn Act(id: u64) -> impl IntoView {
     let st = expect_context::<State>();
@@ -91,7 +80,7 @@ fn Act(id: u64) -> impl IntoView {
                 on:dragstart=move |ev| dnd::start(st, id, &ev) on:dragend=move |_| dnd::end(st)>
                 {label}
             </span>
-            {title_input(st, id, "act-title", "Titre de l'acte")}
+            {field::line(st, Field::Title(id), "title act-title", "Titre de l'acte")}
             {more(st, id)}
         </div>
         <For each=move || scenes.get() key=|id| *id let:scene>
@@ -107,7 +96,7 @@ fn Scene(id: u64) -> impl IntoView {
     let beats = children(st, Some(id), Level::Beat);
     let label = move || st.live_node(id).map(|n| n.label);
     let add = move |_| {
-        if let Some(new) = st.story.try_update(|s| s.add(Some(id), None)).flatten() {
+        if let Some(new) = st.edit(|s| s.add(Some(id), None)) {
             st.reveal(new);
         }
     };
@@ -123,7 +112,7 @@ fn Scene(id: u64) -> impl IntoView {
                     on:dragstart=move |ev| dnd::start(st, id, &ev) on:dragend=move |_| dnd::end(st)>
                     {label}
                 </span>
-                {title_input(st, id, "scene-title", "Titre de la scène")}
+                {field::line(st, Field::Title(id), "title scene-title", "Titre de la scène")}
                 {more(st, id)}
             </div>
             <For each=move || beats.get() key=|id| *id let:beat>
@@ -139,6 +128,16 @@ fn Beat(id: u64) -> impl IntoView {
     let st = expect_context::<State>();
     let text = Memo::new(move |_| st.story.with(|s| s.find(id).map(|n| n.text.clone()).unwrap_or_default()));
     let number = move || st.live_node(id).map(|n| n.number);
+    // The others' cursors in this beat: where, and whose.
+    let cursors = Memo::new(move |_| {
+        st.peers.with(|p| {
+            p.iter()
+                .filter_map(|p| {
+                    p.cursor.filter(|(beat, _)| *beat == id).map(|(_, at)| (at, p.color.clone(), p.name.clone()))
+                })
+                .collect::<Vec<_>>()
+        })
+    });
     let class = move || format!("beat{}{}", if st.holds_lit(id) { " hl" } else { "" }, dnd::class(st, id));
     let notes = Memo::new(move |_| st.notes(id));
     let note = move |n: Note| {
@@ -183,13 +182,8 @@ fn Beat(id: u64) -> impl IntoView {
             </div>
             <div class="grow" class:sel=move || st.is_selected(id)>
                 <div class="mirror" aria-hidden="true">{move || marked(&text.get(), &st.lit_spans(id))}</div>
-                <textarea
-                    rows="1"
-                    aria-label="Texte du beat"
-                    placeholder="Écris le beat. @nom déclare un élément, !nom le paie."
-                    prop:value=move || text.get()
-                    on:input=move |ev| st.story.update(|s| s.set_text(id, event_target_value(&ev)))
-                ></textarea>
+                {field::area(st, id)}
+                <div class="mirror carets" aria-hidden="true">{move || carets(&text.get(), &cursors.get())}</div>
             </div>
             <div class="notes">{move || notes.get().into_iter().map(note).collect_view()}</div>
         </div>
@@ -208,6 +202,29 @@ fn marked(text: &str, spans: &[std::ops::Range<usize>]) -> impl IntoView + use<>
         parts.push(text[at..span.start].to_string().into_any());
         parts.push(view! { <mark>{text[span.clone()].to_string()}</mark> }.into_any());
         at = span.end;
+    }
+    parts.push(format!("{} ", &text[at..]).into_any());
+    parts
+}
+
+/// The others' cursors in a beat's text, laid over the text field: the text
+/// itself unseen, a bar of their colour where each cursor stands, and their
+/// name over it when the pointer is on it.
+fn carets(text: &str, cursors: &[(usize, String, String)]) -> impl IntoView + use<> {
+    let mut cursors: Vec<&(usize, String, String)> = cursors.iter().collect();
+    cursors.sort_by_key(|c| c.0);
+    let mut parts = Vec::new();
+    let mut at = 0;
+    for (byte, color, name) in cursors {
+        let byte = (*byte).clamp(at, text.len());
+        if !text.is_char_boundary(byte) {
+            continue;
+        }
+        parts.push(text[at..byte].to_string().into_any());
+        parts.push(
+            view! { <span class="caret" style=format!("--c: {color}") data-name=name.clone()></span> }.into_any(),
+        );
+        at = byte;
     }
     parts.push(format!("{} ", &text[at..]).into_any());
     parts

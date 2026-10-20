@@ -1,6 +1,7 @@
 //! Scenar in the browser: the page around the core of the `scenar` library.
 
 mod dnd;
+mod link;
 mod state;
 mod storage;
 mod ui;

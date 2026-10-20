@@ -55,13 +55,11 @@ fn menu(st: State, id: u64) -> AnyView {
     let parent = st.story.with_untracked(|s| s.parent(id));
     let label = st.story.with_untracked(|s| s.label(id));
     let step = move |side| {
-        st.story.update(|s| {
-            s.step(id, side);
-        });
+        st.edit(|s| s.step(id, side));
         st.reveal(id);
     };
     let add = move |parent: Option<u64>, after: Option<u64>| {
-        if let Some(new) = st.story.try_update(|s| s.add(parent, after)).flatten() {
+        if let Some(new) = st.edit(|s| s.add(parent, after)) {
             st.reveal(new);
         }
     };
@@ -102,7 +100,7 @@ fn bin(st: State) -> impl IntoView {
                 view! {
                     <div class="bin-item">
                         <span class="label"><span class="level">{level.name()}</span>" "{label}</span>
-                        <button class="btn" on:click=move |_| st.story.update(|s| s.set_archived(id, false))>"restaurer"</button>
+                        <button class="btn" on:click=move |_| st.edit(|s| s.set_archived(id, false))>"restaurer"</button>
                         <button class="btn" on:click=move |_| st.delete(id)>"supprimer"</button>
                     </div>
                 }

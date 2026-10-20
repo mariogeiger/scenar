@@ -85,16 +85,17 @@ mod tests {
 
     #[test]
     fn repeated_insertions_stay_ordered_and_short() {
-        // Always at the front, always at the back, always in the same gap.
+        // Always at the front, always at the back, and always in one gap,
+        // narrowing it from either side in turn.
         let mut front = vec![check(None, None)];
         let mut back = front.clone();
-        let (mut low, mut high) = (check(None, None), check(None, None));
-        high = check(Some(&low), None).max(high);
-        for _ in 0..200 {
+        let (mut low, mut high) = (check(None, None), String::new());
+        high.push_str(&check(Some(&low), None));
+        for i in 0..200 {
             front.insert(0, check(None, Some(&front[0])));
             back.push(check(Some(back.last().unwrap()), None));
             let m = check(Some(&low), Some(&high));
-            if m.len() % 2 == 0 { low = m } else { high = m }
+            if i % 2 == 0 { low = m } else { high = m }
         }
         assert!(front.windows(2).all(|w| w[0] < w[1]) && back.windows(2).all(|w| w[0] < w[1]));
         assert!(back.last().unwrap().len() <= 8 && front[0].len() <= 8);

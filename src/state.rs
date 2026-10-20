@@ -4,7 +4,9 @@
 use leptos::prelude::*;
 use scenar::engine::{self, Analysis, Dependency, Kind, Position, Rule};
 use scenar::model::{Level, Live, Side, Story};
+use scenar::shared::{Field, Shared, Splice};
 
+use crate::link::{self, Peer, Sync};
 use crate::storage;
 
 /// Something that opens on a click, over the page, and closes on a click
@@ -62,7 +64,16 @@ pub struct Note {
 
 #[derive(Clone, Copy)]
 pub struct State {
+    /// The story as the document holds it: every change goes to the
+    /// document, and the story is read back from it.
     pub story: RwSignal<Story>,
+    pub shared: StoredValue<Shared, LocalStorage>,
+    /// The id of the shared link the page is on; `None` on the private
+    /// draft, which only this browser keeps.
+    pub link: Option<&'static str>,
+    pub sync: RwSignal<Sync>,
+    /// The others on the link.
+    pub peers: RwSignal<Vec<Peer>>,
     /// The block last clicked, or the scene being read, which may have been
     /// archived since.
     pub selected: RwSignal<Option<u64>>,
@@ -96,7 +107,18 @@ pub struct State {
 
 impl State {
     pub fn new() -> State {
-        let story = RwSignal::new(storage::load().unwrap_or_else(scenar::example::kerlaz));
+        let link: Option<&'static str> = link::id_in(&storage::path()).map(|id| &*Box::leak(id.into_boxed_str()));
+        let shared = match link {
+            None => Shared::of(&storage::load().unwrap_or_else(scenar::example::kerlaz)),
+            Some(id) => {
+                let shared = Shared::default();
+                if let Some(copy) = storage::copy_of(id) {
+                    _ = shared.apply(&copy);
+                }
+                shared
+            }
+        };
+        let story = RwSignal::new(shared.read());
         let selected = RwSignal::new(None);
         let focus = RwSignal::new(None::<String>);
         let hovered = RwSignal::new(None::<Dependency>);
@@ -145,10 +167,14 @@ impl State {
             })
         });
         let dark = RwSignal::new(storage::dark());
-        Effect::new(move |_| story.with(storage::save));
+        let shared = StoredValue::new_local(shared);
         Effect::new(move |_| storage::set_dark(dark.get()));
-        State {
+        let st = State {
             story,
+            shared,
+            link,
+            sync: RwSignal::new(if link.is_some() { Sync::Connecting } else { Sync::Offline }),
+            peers: RwSignal::new(Vec::new()),
             selected,
             script: NodeRef::new(),
             scrolled_by_page_until: RwSignal::new(0.0),
@@ -164,7 +190,67 @@ impl State {
             analysis,
             path,
             lit,
+        };
+        match link {
+            None => Effect::new(move |_| story.with(storage::save)),
+            Some(id) => {
+                link::open(st, id);
+                Effect::new(move |_| {
+                    story.with(|s| storage::remember(id, &s.title));
+                    link::keep(st);
+                })
+            }
+        };
+        st
+    }
+
+    /// Changes the story: the change goes to the document, and to the
+    /// others on a link.
+    pub fn edit<R>(&self, change: impl FnOnce(&mut Story) -> R) -> R {
+        let mut next = self.story.get_untracked();
+        let result = change(&mut next);
+        let update = self.shared.with_value(|s| s.write(&next));
+        self.settle(update);
+        result
+    }
+
+    /// Applies the edit a reader made to a text as they saw it.
+    pub fn splice(&self, field: Field, seen: &str, edit: &Splice) {
+        let update = self.shared.with_value(|s| s.splice(field, seen, edit));
+        self.settle(update);
+    }
+
+    /// Merges a change that came from the others.
+    pub fn receive(&self, update: &[u8]) {
+        if self.shared.with_value(|s| s.apply(update)).is_ok() {
+            self.story.set(self.shared.with_value(Shared::read));
+            link::refresh(*self);
         }
+    }
+
+    fn settle(&self, update: Option<Vec<u8>>) {
+        let Some(update) = update else { return };
+        self.story.set(self.shared.with_value(Shared::read));
+        link::send_update(update);
+        link::refresh(*self);
+    }
+
+    /// Keeps the draft on the server under a new link, then opens it; the
+    /// draft starts over blank.
+    pub fn publish(&self) {
+        let update = self.shared.with_value(Shared::encode);
+        let title = self.story.with_untracked(|s| s.title.clone());
+        leptos::task::spawn_local(async move {
+            match link::create(update.clone()).await {
+                Ok(id) => {
+                    storage::keep_copy(&id, &update);
+                    storage::remember(&id, &title);
+                    storage::save(&Story::blank());
+                    storage::go(&format!("/{id}"));
+                }
+                Err(e) => storage::alert(&format!("Le lien n'a pas pu être créé : {e}.")),
+            }
+        });
     }
 
     /// The living block `id`.
@@ -393,14 +479,14 @@ impl State {
         {
             return;
         }
-        self.story.update(|s| s.set_archived(id, true));
+        self.edit(|s| s.set_archived(id, true));
     }
 
     /// Deletes an archived block for good, once confirmed.
     pub fn delete(&self, id: u64) {
         let label = self.story.with_untracked(|s| s.label(id));
         if storage::confirm(&format!("Supprimer définitivement « {label} » et tout ce qu'il contient ?")) {
-            self.story.update(|s| {
+            self.edit(|s| {
                 s.remove(id);
             });
         }
@@ -413,18 +499,34 @@ impl State {
             .unwrap_or_default()
     }
 
+    /// Starts a blank story: on the draft, in place of it; on a link,
+    /// on the draft, leaving the link as it is.
     pub fn reset(&self) {
-        if storage::confirm("Vider le scénario ? Exporte-le d'abord si tu veux le garder.") {
-            self.story.set(Story::blank());
+        if self.link.is_some() {
+            if storage::confirm(
+                "Ouvrir un brouillon vierge ? Le lien partagé reste tel quel ; ton brouillon local sera vidé.",
+            ) {
+                storage::save(&Story::blank());
+                storage::go("/");
+            }
+        } else if storage::confirm("Vider le scénario ? Exporte-le d'abord si tu veux le garder.") {
+            self.edit(|s| *s = Story::blank());
             self.focus.set(None);
         }
     }
 
+    /// Replaces the story by one read from a file: on a link, for everyone
+    /// on it.
     pub fn replace(&self, json: &str) {
         match Story::from_json(json) {
             Ok(story) => {
-                if storage::confirm(&format!("Remplacer le scénario actuel par « {} » ?", story.title)) {
-                    self.story.set(story);
+                let question = if self.link.is_some() {
+                    format!("Remplacer le scénario de ce lien, pour tous ceux qui l'ont, par « {} » ?", story.title)
+                } else {
+                    format!("Remplacer le scénario actuel par « {} » ?", story.title)
+                };
+                if storage::confirm(&question) {
+                    self.edit(|s| *s = story);
                     self.focus.set(None);
                 }
             }

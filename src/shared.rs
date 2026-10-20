@@ -16,9 +16,10 @@
 use std::collections::{HashMap, HashSet};
 
 use yrs::updates::decoder::Decode;
+use yrs::updates::encoder::Encode;
 use yrs::{
-    Doc, GetString, Map, MapPrelim, MapRef, Out, ReadTxn, StateVector, Text, TextPrelim, TextRef, Transact, TransactionMut,
-    Update,
+    Assoc, Doc, GetString, IndexedSequence, Map, MapPrelim, MapRef, OffsetKind, Options, Out, ReadTxn, StateVector,
+    StickyIndex, Text, TextPrelim, TextRef, Transact, TransactionMut, Update,
 };
 
 use crate::model::{FORMAT, Node, Story};
@@ -96,13 +97,32 @@ struct Entry {
 }
 
 impl Default for Shared {
+    /// An empty document. It counts text offsets in UTF-16 units, the unit
+    /// Yrs keeps texts in, so that every index it takes or gives, sticky ones
+    /// included, means the same; [`Splice`]s, in bytes, convert at the edge.
     fn default() -> Shared {
-        Shared::new(Doc::new())
+        Shared::new(Doc::with_options(Options { offset_kind: OffsetKind::Utf16, ..Options::default() }))
+    }
+}
+
+/// The UTF-16 units of `text` before its byte `byte`.
+fn units(text: &str, byte: usize) -> u32 {
+    text[..byte].encode_utf16().count() as u32
+}
+
+/// Replaces, in `text` that reads `now`, the bytes `at..end` by `inserted`.
+fn replace(txn: &mut TransactionMut, text: &TextRef, now: &str, at: usize, end: usize, inserted: &str) {
+    let (u, v) = (units(now, at), units(now, end));
+    if v > u {
+        text.remove_range(txn, u, v - u);
+    }
+    if !inserted.is_empty() {
+        text.insert(txn, u, inserted);
     }
 }
 
 impl Shared {
-    pub fn new(doc: Doc) -> Shared {
+    fn new(doc: Doc) -> Shared {
         let title = doc.get_or_insert_text("title");
         let nodes = doc.get_or_insert_map("nodes");
         Shared { doc, title, nodes }
@@ -111,7 +131,7 @@ impl Shared {
     /// A new document that holds `story`.
     pub fn of(story: &Story) -> Shared {
         let shared = Shared::default();
-        shared.write(story);
+        shared.write_in(story);
         shared
     }
 
@@ -159,14 +179,32 @@ impl Shared {
         Story { format: FORMAT, title: self.title.get_string(&txn), acts: build(&below, None, 0) }
     }
 
+    /// What changed since the state `before`, as an update for the others;
+    /// `None` when nothing did.
+    fn since(&self, before: &StateVector) -> Option<Vec<u8>> {
+        let txn = self.doc.transact();
+        (txn.state_vector() != *before).then(|| txn.encode_state_as_update_v1(before))
+    }
+
     /// Makes the document hold `story`, by the fewest changes: blocks gone
     /// are deleted, new ones added, texts spliced, and among siblings only
-    /// those out of order get a new rank.
-    pub fn write(&self, story: &Story) {
+    /// those out of order get a new rank. Returns the update it made.
+    pub fn write(&self, story: &Story) -> Option<Vec<u8>> {
+        let before = self.doc.transact().state_vector();
+        self.write_in(story);
+        self.since(&before)
+    }
+
+    fn write_in(&self, story: &Story) {
         let mut txn = self.doc.transact_mut();
         splice_to(&mut txn, &self.title, &story.title);
         let mut wanted: Vec<(&Node, usize, Option<u64>)> = Vec::new();
-        fn walk<'a>(nodes: &'a [Node], level: usize, parent: Option<u64>, out: &mut Vec<(&'a Node, usize, Option<u64>)>) {
+        fn walk<'a>(
+            nodes: &'a [Node],
+            level: usize,
+            parent: Option<u64>,
+            out: &mut Vec<(&'a Node, usize, Option<u64>)>,
+        ) {
             for n in nodes {
                 out.push((n, level, parent));
                 walk(&n.children, level + 1, Some(n.id), out);
@@ -218,10 +256,8 @@ impl Shared {
             }
         }
         for (parent, list) in lists {
-            let old: Vec<Option<&str>> = list
-                .iter()
-                .map(|id| was.get(id).filter(|(p, _)| *p == parent).map(|(_, r)| r.as_str()))
-                .collect();
+            let old: Vec<Option<&str>> =
+                list.iter().map(|id| was.get(id).filter(|(p, _)| *p == parent).map(|(_, r)| r.as_str())).collect();
             let keep = increasing(&old);
             let mut low: Option<String> = None;
             for (i, &id) in list.iter().enumerate() {
@@ -246,8 +282,14 @@ impl Shared {
 
     /// Applies to a text the edit a reader made to `seen`, the text as they
     /// saw it. When the document has changed since, by someone else, the edit
-    /// is moved past that change.
-    pub fn splice(&self, field: Field, seen: &str, edit: &Splice) {
+    /// is moved past that change. Returns the update it made.
+    pub fn splice(&self, field: Field, seen: &str, edit: &Splice) -> Option<Vec<u8>> {
+        let before = self.doc.transact().state_vector();
+        self.splice_in(field, seen, edit);
+        self.since(&before)
+    }
+
+    fn splice_in(&self, field: Field, seen: &str, edit: &Splice) {
         let mut txn = self.doc.transact_mut();
         let Some(text) = self.text(&txn, field) else { return };
         let now = text.get_string(&txn);
@@ -258,12 +300,41 @@ impl Shared {
         }
         let fit = |p: usize| (0..=p.min(now.len())).rev().find(|&q| now.is_char_boundary(q)).unwrap_or(0);
         let (at, end) = (fit(at), fit(end.max(at)));
-        if end > at {
-            text.remove_range(&mut txn, at as u32, (end - at) as u32);
+        replace(&mut txn, &text, &now, at, end, &edit.inserted);
+    }
+
+    /// An anchor at the byte `at` of a text: a position that keeps to the
+    /// letter after it, or at the very end, just after the last letter,
+    /// whatever is written around it. Encoded: a first byte saying which,
+    /// then the sticky index of that letter.
+    pub fn anchor(&self, field: Field, at: usize) -> Option<Vec<u8>> {
+        let txn = self.doc.transact();
+        let text = self.text(&txn, field)?;
+        let now = text.get_string(&txn);
+        let at = (0..=at.min(now.len())).rev().find(|&b| now.is_char_boundary(b))?;
+        let (after, letter) = match now[..at].chars().next_back() {
+            Some(c) if at == now.len() => (1, at - c.len_utf8()),
+            _ => (0, at),
+        };
+        let sticky = text.sticky_index(&txn, units(&now, letter), Assoc::After)?;
+        Some([vec![after], sticky.encode_v1()].concat())
+    }
+
+    /// Where an anchor in the text `field` stands now: a byte of it.
+    pub fn resolve(&self, field: Field, anchor: &[u8]) -> Option<usize> {
+        let (&after, sticky) = anchor.split_first()?;
+        let sticky = StickyIndex::decode_v1(sticky).ok()?;
+        let txn = self.doc.transact();
+        let unit = sticky.get_offset(&txn)?.index as usize;
+        let now = self.text(&txn, field)?.get_string(&txn);
+        let mut units = 0;
+        for (byte, c) in now.char_indices() {
+            if units >= unit {
+                return Some(if after == 0 { byte } else { byte + c.len_utf8() });
+            }
+            units += c.len_utf16();
         }
-        if !edit.inserted.is_empty() {
-            text.insert(&mut txn, at as u32, &edit.inserted);
-        }
+        Some(now.len())
     }
 
     /// The text `field` stands for, if it exists.
@@ -311,11 +382,8 @@ fn flag<T: ReadTxn>(txn: &T, map: &MapRef, key: &str) -> bool {
 fn splice_to(txn: &mut TransactionMut, text: &TextRef, wanted: &str) {
     let now = text.get_string(txn);
     let edit = Splice::between(&now, wanted);
-    if edit.removed > 0 {
-        text.remove_range(txn, edit.at as u32, edit.removed as u32);
-    }
-    if !edit.inserted.is_empty() {
-        text.insert(txn, edit.at as u32, &edit.inserted);
+    if !edit.is_empty() {
+        replace(txn, text, &now, edit.at, edit.at + edit.removed, &edit.inserted);
     }
 }
 
@@ -427,7 +495,8 @@ mod tests {
         exchange(&a, &b);
         let merged = a.read();
         assert_eq!(merged, b.read());
-        let everywhere: usize = merged.acts.iter().map(|act| merged.subtree(act.id).iter().filter(|&&n| n == beat).count()).sum();
+        let everywhere: usize =
+            merged.acts.iter().map(|act| merged.subtree(act.id).iter().filter(|&&n| n == beat).count()).sum();
         assert_eq!(everywhere, 1);
         assert!([sa.parent(beat), sb.parent(beat)].contains(&merged.parent(beat)));
     }
@@ -459,6 +528,34 @@ mod tests {
         a.splice(Field::Text(beat), &seen, &Splice { at: word, removed: 0, inserted: " (seule)".into() });
         let text = a.read().find(beat).unwrap().text.clone();
         assert!(text.starts_with(&format!("Hier. {} (seule) ", &seen[..word])), "{text}");
+    }
+
+    #[test]
+    fn changes_travel_as_the_updates_that_made_them() {
+        let story = crate::example::kerlaz();
+        let (a, b) = pair(&story);
+        let beat = story.acts[1].children[0].children[0].id;
+        let seen = a.read().find(beat).unwrap().text.clone();
+        let edit = Splice { at: 0, removed: 0, inserted: "Soudain, ".into() };
+        b.apply(&a.splice(Field::Text(beat), &seen, &edit).unwrap()).unwrap();
+        assert_eq!(a.read(), b.read());
+        assert!(a.write(&a.read()).is_none());
+        // An anchor after the first word keeps to it when text comes before.
+        let anchor = a.anchor(Field::Text(beat), "Soudain,".len()).unwrap();
+        a.splice(
+            Field::Text(beat),
+            &a.read().find(beat).unwrap().text,
+            &Splice { at: 0, removed: 0, inserted: "Là. ".into() },
+        );
+        assert_eq!(a.resolve(Field::Text(beat), &anchor), Some("Là. Soudain,".len()));
+        // At the very end too, where most typing happens.
+        let len = a.read().find(beat).unwrap().text.len();
+        let end = a.anchor(Field::Text(beat), len).unwrap();
+        assert_eq!(a.resolve(Field::Text(beat), &end), Some(len));
+        // Someone types after it: it stays after the letter it followed.
+        let text = a.read().find(beat).unwrap().text.clone();
+        a.splice(Field::Text(beat), &text, &Splice { at: len, removed: 0, inserted: " Encore.".into() });
+        assert_eq!(a.resolve(Field::Text(beat), &end), Some(len));
     }
 
     #[test]

@@ -7,6 +7,7 @@
 //! and the panel opening over it; from a desktop on, the timeline beside
 //! it; on an ultra-wide screen, the script in pages and the panel too.
 
+mod field;
 mod footer;
 mod frieze;
 mod panel;
@@ -16,6 +17,8 @@ mod timeline;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+
+use scenar::shared::Field;
 
 use crate::state::{Popup, State};
 use crate::storage;
@@ -49,7 +52,6 @@ pub fn App() -> impl IntoView {
         }
     });
     let picker = NodeRef::<leptos::html::Input>::new();
-    let title = move || st.story.with(|s| s.title.clone());
     let import = move |_| {
         let Some(input) = picker.get() else { return };
         spawn_local(async move {
@@ -71,12 +73,7 @@ pub fn App() -> impl IntoView {
             </header>
             <nav class="side">
                 <div class="logo">"Scenar"</div>
-                <input
-                    class="title story-title"
-                    aria-label="Titre du scénario"
-                    prop:value=title
-                    on:input=move |ev| st.story.update(|s| s.title = event_target_value(&ev))
-                />
+                {field::line(st, Field::StoryTitle, "title story-title", "Titre du scénario")}
                 <timeline::Timeline/>
                 <div class="actions">
                     <button class="btn" on:click=move |_| st.reset()>"Nouveau"</button>

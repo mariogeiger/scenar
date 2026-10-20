@@ -130,7 +130,11 @@ async fn create(
 }
 
 async fn exists(State(app): State<App>, Path(id): Path<String>) -> StatusCode {
-    if valid_id(&id) && app.data.join(format!("{id}.ydoc")).exists() { StatusCode::NO_CONTENT } else { StatusCode::NOT_FOUND }
+    if valid_id(&id) && app.data.join(format!("{id}.ydoc")).exists() {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    }
 }
 
 async fn live(State(app): State<App>, Path(id): Path<String>, ws: WebSocketUpgrade) -> Response {
