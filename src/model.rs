@@ -66,17 +66,18 @@ pub struct Node {
 }
 
 impl Node {
-    /// A new block of `level` with ids from `next` on, and below it one new
-    /// block of each lower level, so that it holds a beat to write in.
-    fn fresh(level: Level, next: &mut u64) -> Node {
-        let id = *next;
-        *next += 1;
+    /// A new block of `level`, and below it one new block of each lower
+    /// level, so that it holds a beat to write in. Ids are drawn at random,
+    /// below 2⁵³ so that JavaScript reads them exactly: blocks that several
+    /// people add at once to a shared story must not share one.
+    fn fresh(level: Level) -> Node {
+        let id = fastrand::u64(1..1 << 53);
         let title = match level {
             Level::Act => "Nouvel acte",
             Level::Scene => "Nouvelle scène",
             Level::Beat => "",
         };
-        let children = level.child().map(|l| vec![Node::fresh(l, next)]).unwrap_or_default();
+        let children = level.child().map(|l| vec![Node::fresh(l)]).unwrap_or_default();
         Node { id, title: title.into(), text: String::new(), archived: false, children }
     }
 }
@@ -232,20 +233,12 @@ impl Story {
             None => (Level::Act, Vec::new()),
             Some(p) => (self.level(p)?.child()?, self.path(p)?),
         };
-        let mut next = self.next_id();
-        let node = Node::fresh(level, &mut next);
+        let node = Node::fresh(level);
         let id = node.id;
         let list = self.list_mut(&path);
         let at = after.and_then(|a| list.iter().position(|n| n.id == a)).map_or(list.len(), |i| i + 1);
         list.insert(at, node);
         Some(id)
-    }
-
-    fn next_id(&self) -> u64 {
-        fn max(nodes: &[Node]) -> u64 {
-            nodes.iter().map(|n| n.id.max(max(&n.children))).max().unwrap_or(0)
-        }
-        max(&self.acts) + 1
     }
 
     pub fn set_title(&mut self, id: u64, title: String) {
@@ -414,11 +407,11 @@ mod tests {
     #[test]
     fn step_skips_archived_siblings() {
         let mut s = story();
-        s.add(Some(2), None); // beat 8
+        let new = s.add(Some(2), None).unwrap();
         s.set_archived(4, true);
-        assert!(s.step(8, Side::Before));
-        assert_eq!(children(&s, 2), [8, 4, 3]);
-        assert!(!s.step(8, Side::Before));
+        assert!(s.step(new, Side::Before));
+        assert_eq!(children(&s, 2), [new, 4, 3]);
+        assert!(!s.step(new, Side::Before));
     }
 
     #[test]

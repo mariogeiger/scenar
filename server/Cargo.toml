@@ -1,0 +1,14 @@
+[package]
+name = "scenar-server"
+version = "0.1.0"
+edition = "2024"
+description = "Keeps the shared stories of Scenar and relays, between the browsers open on one, what each changes."
+license = "MIT"
+publish = false
+
+[dependencies]
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "fs", "signal"] }
+yrs = "0.28"
+getrandom = "0.3"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
