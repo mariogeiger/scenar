@@ -1,0 +1,110 @@
+/* Scenar: a writer's desk. Warm paper, a manuscript serif for the text,
+   a terracotta accent, beats numbered in the margin like a script. */
+
+:root {
+  --paper: #faf6ee; --ink: #2b2420; --mute: #a09282; --line: #ece3d4;
+  --soft: #f3ece0; --acc: #b85c38; --acc-soft: #f4e0d6; --blue: #3a6ea5;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --mono: "Courier Prime", "Courier New", monospace;
+  color-scheme: light;
+}
+:root.dark {
+  --paper: #1e1a17; --ink: #e9dfd0; --mute: #7d7062; --line: #2f2924;
+  --soft: #27221e; --acc: #d9774f; --acc-soft: #3d2a20; --blue: #6c9fd6;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--paper); color: var(--ink); font: 14px/1.5 system-ui, sans-serif; }
+button, input, textarea { font: inherit; color: inherit; background: none; border: 0; padding: 0; }
+button { cursor: pointer; }
+input:focus, textarea:focus { outline: none; }
+.hidden { display: none; }
+.empty { color: var(--mute); font-style: italic; }
+
+.app { height: 100%; display: grid; grid-template-columns: 220px minmax(0, 1fr) 230px; }
+nav, main, aside { overflow: auto; padding: 28px 18px; }
+main { padding: 28px 48px 80px; }
+main > * { max-width: 680px; }
+
+/* Left: the timeline */
+nav { display: flex; flex-direction: column; gap: 2px; }
+.logo { font-family: var(--serif); color: var(--acc); font-size: 18px; }
+.story-title { color: var(--mute); font-size: 12px; margin-bottom: 14px; width: 100%; }
+.story-title:focus { color: var(--ink); }
+.tree { display: flex; flex-direction: column; }
+.row { display: flex; align-items: center; gap: 4px; padding: 3px 6px; margin: 0 -6px; border-radius: 4px; cursor: pointer; }
+.row .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row.level-act { color: var(--mute); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; margin-top: 14px; }
+.row.level-scene { color: var(--mute); }
+.row.level-scene.on { color: var(--ink); font-weight: 600; }
+.row.level-beat { color: var(--mute); font-size: 12px; padding-left: 20px; }
+.row:hover { background: var(--soft); }
+.hl { background: var(--acc-soft); box-shadow: inset 2px 0 var(--acc); }
+.tools { display: none; gap: 2px; }
+.row:hover .tools, .beat:hover .tools { display: flex; }
+.tool { color: var(--mute); font-size: 12px; width: 18px; border-radius: 3px; }
+.tool:hover { color: var(--acc); background: var(--line); }
+.add, .add-beat { color: var(--mute); text-align: left; margin-top: 12px; }
+.add:hover, .add-beat:hover { color: var(--acc); }
+
+.drop-before { box-shadow: inset 0 2px var(--blue); }
+.drop-after { box-shadow: inset 0 -2px var(--blue); }
+.drop-into { box-shadow: inset 0 0 0 1px var(--blue); }
+
+.bin { margin-top: 28px; font-size: 12px; color: var(--mute); }
+.bin-head { color: var(--mute); }
+.bin-item { display: flex; align-items: center; gap: 2px; padding: 2px 0; }
+.bin-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: line-through; }
+.bin-item .level { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+.actions { margin-top: auto; padding-top: 24px; display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; }
+.actions button { color: var(--mute); }
+.actions button:hover { color: var(--acc); }
+
+/* Middle: the scene */
+.crumb { display: flex; gap: 6px; color: var(--mute); font-size: 12px; margin-left: 38px; }
+.act-title { flex: 1; color: var(--mute); }
+.scene-title { display: block; width: calc(100% - 38px); margin: 2px 0 26px 38px; font-family: var(--serif); font-size: 24px; }
+.beat { display: flex; gap: 16px; margin-bottom: 22px; border-radius: 4px; padding: 4px 0; }
+.beat .n { font-family: var(--mono); color: var(--mute); width: 22px; flex: none; text-align: right; padding-top: 4px; cursor: grab; user-select: none; }
+.beat .body { flex: 1; min-width: 0; }
+.grow { display: grid; }
+.grow::after { content: attr(data-value) " "; visibility: hidden; white-space: pre-wrap; }
+.grow > textarea, .grow::after {
+  grid-area: 1 / 1 / 2 / 2; font-family: var(--serif); font-size: 16px; line-height: 1.7;
+  overflow-wrap: anywhere; padding: 0; margin: 0;
+}
+.grow > textarea { resize: none; overflow: hidden; }
+.grow > textarea::placeholder { color: var(--mute); font-style: italic; }
+.tags { display: flex; gap: 8px; align-items: center; min-height: 20px; margin-top: 4px; font-size: 12px; color: var(--mute); }
+.tags > span:first-child { flex: 1; }
+.tag { cursor: pointer; }
+.tag b { font-weight: 500; }
+.tag.setup b, .tag.payoff b { color: var(--acc); }
+.tag.payoff b { text-decoration: underline; text-underline-offset: 2px; }
+.tag.focused b, .tag:hover b { background: var(--acc-soft); border-radius: 3px; }
+.add-beat { margin-left: 38px; }
+
+/* Right: elements and warnings */
+.tabs { font-size: 12px; color: var(--mute); margin-bottom: 16px; }
+.tabs button { color: var(--mute); }
+.tabs button.on { color: var(--ink); border-bottom: 1px solid var(--acc); }
+.element { margin-bottom: 12px; padding: 2px 6px; margin-left: -6px; border-radius: 4px; }
+.element.focused { background: var(--acc-soft); }
+.element .name { font-family: var(--serif); font-size: 15px; }
+.element .name:hover { color: var(--acc); }
+.aliases { font-size: 11px; color: var(--mute); }
+.flow { display: flex; flex-wrap: wrap; gap: 0 8px; font-size: 11px; color: var(--mute); font-family: var(--mono); }
+.at:hover { color: var(--acc); }
+.warning { display: flex; flex-direction: column; text-align: left; width: 100%; margin-bottom: 12px; font-size: 12px; padding-left: 8px; border-left: 2px solid #c9a227; }
+.warning b { font-weight: 600; }
+.warning .where { color: var(--mute); font-family: var(--mono); font-size: 11px; }
+.warning:hover b { color: var(--acc); }
+
+@media (max-width: 800px) {
+  .app { grid-template-columns: 1fr; height: auto; }
+  nav, main, aside { overflow: visible; padding: 18px; }
+  .actions { margin-top: 16px; }
+  .tools { display: flex; }
+}
