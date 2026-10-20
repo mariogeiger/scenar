@@ -12,7 +12,12 @@ use crate::state::{Popup, State};
 pub fn Timeline() -> impl IntoView {
     let st = expect_context::<State>();
     let rows = move || {
-        let shown: Vec<Live> = st.live.with(|l| l.iter().filter(|n| n.level != Level::Beat).cloned().collect());
+        let shown: Vec<Live> = st.live.with(|l| {
+            l.iter()
+                .filter(|n| n.level != Level::Beat)
+                .cloned()
+                .collect()
+        });
         shown.into_iter().map(|n| row(st, n)).collect_view()
     };
     let add_act = move |_| {
@@ -37,10 +42,10 @@ fn row(st: State, n: Live) -> impl IntoView {
     let act = level == Level::Act;
     let class = move || {
         let mut class = String::from(if act { "row heading" } else { "row link" });
-        if !act && st.scene.get() == Some(id) {
-            class.push_str(" on");
+        if st.is_selected(id) {
+            class.push_str(" sel");
         }
-        if !act && st.holds_focus(id) {
+        if !act && st.holds_lit(id) {
             class.push_str(" hl");
         }
         if !act && st.scene_warns(id) {
@@ -50,7 +55,11 @@ fn row(st: State, n: Live) -> impl IntoView {
         class
     };
     let label = move || st.story.with(|s| s.label(id));
-    let number = if act { format!("{} · ", n.label) } else { String::new() };
+    let number = if act {
+        format!("{} · ", n.label)
+    } else {
+        String::new()
+    };
     let open = move |_| {
         if !act {
             st.close_popup();

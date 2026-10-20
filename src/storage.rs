@@ -28,7 +28,10 @@ pub fn save(story: &Story) {
 
 /// Whether the dark theme was chosen, or else is the system's.
 pub fn dark() -> bool {
-    match local().and_then(|s| s.get_item(THEME_KEY).ok().flatten()).as_deref() {
+    match local()
+        .and_then(|s| s.get_item(THEME_KEY).ok().flatten())
+        .as_deref()
+    {
         Some(theme) => theme == "dark",
         None => window()
             .match_media("(prefers-color-scheme: dark)")
@@ -54,7 +57,11 @@ pub fn export(story: &Story) -> Result<(), JsValue> {
     options.set_type("application/json");
     let blob = web_sys::Blob::new_with_str_sequence_and_options(&parts, &options)?;
     let url = web_sys::Url::create_object_url_with_blob(&blob)?;
-    let a: web_sys::HtmlAnchorElement = window().document().expect("a document").create_element("a")?.dyn_into()?;
+    let a: web_sys::HtmlAnchorElement = window()
+        .document()
+        .expect("a document")
+        .create_element("a")?
+        .dyn_into()?;
     a.set_href(&url);
     a.set_download(&format!("{}.scenar.json", file_stem(&story.title)));
     a.click();
@@ -75,13 +82,19 @@ fn file_stem(title: &str) -> String {
         .filter(|w| !w.is_empty())
         .map(str::to_lowercase)
         .collect();
-    if stem.is_empty() { "scenario".into() } else { stem.join("-") }
+    if stem.is_empty() {
+        "scenario".into()
+    } else {
+        stem.join("-")
+    }
 }
 
 /// The text of the file picked in `input`.
 pub async fn picked_text(input: &web_sys::HtmlInputElement) -> Option<String> {
     let file = input.files()?.get(0)?;
-    let text = wasm_bindgen_futures::JsFuture::from(file.text()).await.ok()?;
+    let text = wasm_bindgen_futures::JsFuture::from(file.text())
+        .await
+        .ok()?;
     text.as_string()
 }
 
@@ -101,11 +114,20 @@ pub fn dom_id(id: u64) -> String {
 /// Scrolls the script to the block `id`: to its start, or for a beat to the
 /// middle of the view, across pages as well as down.
 pub fn reveal(id: u64) {
-    let Some(el) = window().document().and_then(|d| d.get_element_by_id(&dom_id(id))) else { return };
+    let Some(el) = window()
+        .document()
+        .and_then(|d| d.get_element_by_id(&dom_id(id)))
+    else {
+        return;
+    };
     let options = web_sys::ScrollIntoViewOptions::new();
     options.set_behavior(web_sys::ScrollBehavior::Smooth);
     let beat = el.class_list().contains("beat");
-    options.set_block(if beat { web_sys::ScrollLogicalPosition::Center } else { web_sys::ScrollLogicalPosition::Start });
+    options.set_block(if beat {
+        web_sys::ScrollLogicalPosition::Center
+    } else {
+        web_sys::ScrollLogicalPosition::Start
+    });
     options.set_inline(web_sys::ScrollLogicalPosition::Nearest);
     el.scroll_into_view_with_scroll_into_view_options(&options);
 }

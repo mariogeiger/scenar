@@ -19,7 +19,9 @@ pub fn start(st: State, id: u64, ev: &DragEvent) {
 /// Shows where the dragged block would land on `target`: before or after
 /// it by the half the pointer is in.
 pub fn over(st: State, target: u64, ev: &DragEvent) {
-    let Some(id) = st.drag.get_untracked() else { return };
+    let Some(id) = st.drag.get_untracked() else {
+        return;
+    };
     if !st.story.with_untracked(|s| s.can_place(id, target)) {
         return;
     }
@@ -30,7 +32,11 @@ pub fn over(st: State, target: u64, ev: &DragEvent) {
         .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
         .map(|el| el.get_bounding_client_rect())
         .map_or(Side::After, |r| {
-            if (ev.client_y() as f64) < r.top() + r.height() / 2.0 { Side::Before } else { Side::After }
+            if (ev.client_y() as f64) < r.top() + r.height() / 2.0 {
+                Side::Before
+            } else {
+                Side::After
+            }
         });
     if st.drop.get_untracked() != Some((target, side)) {
         st.drop.set(Some((target, side)));
@@ -58,7 +64,11 @@ pub fn class(st: State, target: u64) -> &'static str {
     match (st.drop.get(), st.drag.get()) {
         (Some((t, side)), Some(id)) if t == target => {
             if st.story.with_untracked(|s| s.level(id) == s.level(target)) {
-                if side == Side::Before { " drop-before" } else { " drop-after" }
+                if side == Side::Before {
+                    " drop-before"
+                } else {
+                    " drop-after"
+                }
             } else {
                 " drop-into"
             }

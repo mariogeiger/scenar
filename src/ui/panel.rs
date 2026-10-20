@@ -34,8 +34,11 @@ fn Elements() -> impl IntoView {
             a.elements
                 .iter()
                 .map(|e| {
-                    let mut flow: Vec<(usize, &'static str)> =
-                        e.occurrences.iter().map(|o| (o.at.0, o.kind.symbol())).collect();
+                    let mut flow: Vec<(usize, &'static str)> = e
+                        .occurrences
+                        .iter()
+                        .map(|o| (o.at.0, o.kind.symbol()))
+                        .collect();
                     flow.dedup();
                     (e.name.clone(), e.key.clone(), e.aliases.join(", "), flow)
                 })
@@ -80,7 +83,14 @@ fn Warnings() -> impl IntoView {
         let rows = st.analysis.with(|a| {
             a.warnings
                 .iter()
-                .map(|w| (a.elements[w.element].name.clone(), a.elements[w.element].key.clone(), w.rule, w.beat))
+                .map(|w| {
+                    (
+                        a.elements[w.element].name.clone(),
+                        a.elements[w.element].key.clone(),
+                        w.rule,
+                        w.beat,
+                    )
+                })
                 .collect::<Vec<_>>()
         });
         if rows.is_empty() {
@@ -91,7 +101,10 @@ fn Warnings() -> impl IntoView {
                 let scene = st
                     .beats
                     .with_untracked(|b| b.get(beat).copied())
-                    .and_then(|id| st.story.with_untracked(|s| s.parent(id).map(|p| s.label(p))))
+                    .and_then(|id| {
+                        st.story
+                            .with_untracked(|s| s.parent(id).map(|p| s.label(p)))
+                    })
                     .unwrap_or_default();
                 let go = move |_| {
                     st.focus.set(Some(key.clone()));

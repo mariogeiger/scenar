@@ -1,7 +1,9 @@
 //! The script: the whole story in one flow, act by act and scene by scene,
 //! each beat a text field numbered in the left margin and annotated in the
-//! right one with its elements and where their dependencies lead. On an
-//! ultra-wide screen the flow is set in pages, side by side.
+//! right one with its elements and where their dependencies lead. A click
+//! selects the block it lands in; bars in the left margin show the
+//! selection, act, scene and beat. On an ultra-wide screen the flow is set
+//! in pages, side by side.
 
 use leptos::prelude::*;
 use scenar::engine::Kind;
@@ -15,7 +17,12 @@ use crate::storage::dom_id;
 /// The living children of `id`, or the acts for `None`.
 fn children(st: State, id: Option<u64>, level: Level) -> Memo<Vec<u64>> {
     Memo::new(move |_| {
-        st.live.with(|l| l.iter().filter(|n| n.level == level && n.parent == id).map(|n| n.id).collect())
+        st.live.with(|l| {
+            l.iter()
+                .filter(|n| n.level == level && n.parent == id)
+                .map(|n| n.id)
+                .collect()
+        })
     })
 }
 
@@ -30,8 +37,11 @@ pub fn Script() -> impl IntoView {
     };
     // A box that scrolls only across, as pages do, scrolls across with the wheel too.
     let wheel = move |ev: web_sys::WheelEvent| {
-        let Some(root) = st.script.get_untracked() else { return };
-        if root.scroll_width() > root.client_width() && root.scroll_height() <= root.client_height() {
+        let Some(root) = st.script.get_untracked() else {
+            return;
+        };
+        if root.scroll_width() > root.client_width() && root.scroll_height() <= root.client_height()
+        {
             root.set_scroll_left(root.scroll_left() + ev.delta_y() as i32);
             ev.prevent_default();
         }
@@ -76,9 +86,10 @@ fn Act(id: u64) -> impl IntoView {
     let scenes = children(st, Some(id), Level::Scene);
     let label = move || st.live_node(id).map(|n| format!("Acte {} —", n.label));
     view! {
+        <div class="act" class:sel=move || st.is_selected(id) id=dom_id(id)>
         <div
             class=move || format!("act-head{}", dnd::class(st, id))
-            id=dom_id(id)
+            on:click=move |_| st.select(id)
             on:dragover=move |ev| dnd::over(st, id, &ev)
             on:drop=move |ev| dnd::drop(st, &ev)
         >
@@ -92,6 +103,7 @@ fn Act(id: u64) -> impl IntoView {
         <For each=move || scenes.get() key=|id| *id let:scene>
             <Scene id=scene/>
         </For>
+        </div>
     }
 }
 
@@ -106,9 +118,10 @@ fn Scene(id: u64) -> impl IntoView {
         }
     };
     view! {
-        <section class="scene" id=dom_id(id)>
+        <section class="scene" class:sel=move || st.is_selected(id) id=dom_id(id)>
             <div
                 class=move || format!("slug{}", dnd::class(st, id))
+                on:click=move |_| st.select(id)
                 on:dragover=move |ev| dnd::over(st, id, &ev)
                 on:drop=move |ev| dnd::drop(st, &ev)
             >
@@ -130,9 +143,18 @@ fn Scene(id: u64) -> impl IntoView {
 #[component]
 fn Beat(id: u64) -> impl IntoView {
     let st = expect_context::<State>();
-    let text = Memo::new(move |_| st.story.with(|s| s.find(id).map(|n| n.text.clone()).unwrap_or_default()));
+    let text = Memo::new(move |_| {
+        st.story
+            .with(|s| s.find(id).map(|n| n.text.clone()).unwrap_or_default())
+    });
     let number = move || st.live_node(id).map(|n| n.number);
-    let class = move || format!("beat{}{}", if st.holds_focus(id) { " hl" } else { "" }, dnd::class(st, id));
+    let class = move || {
+        format!(
+            "beat{}{}",
+            if st.holds_lit(id) { " hl" } else { "" },
+            dnd::class(st, id)
+        )
+    };
     let notes = Memo::new(move |_| st.notes(id));
     let note = move |n: Note| {
         let kind = match n.kind {
@@ -140,13 +162,13 @@ fn Beat(id: u64) -> impl IntoView {
             Kind::Mention => "mention",
             Kind::Payoff => "payoff",
         };
-        let focused = {
-            let key = n.key.clone();
-            move || st.focus.get().as_deref() == Some(key.as_str())
+        let lit = {
+            let n = n.clone();
+            move || st.note_lit(id, &n)
         };
         let key = n.key;
         view! {
-            <button class=format!("note {kind}") class:warns=n.warns class:focused=focused
+            <button class=format!("note {kind}") class:warns=n.warns class:focused=lit
                 title="Surligner ses beats"
                 on:click=move |_| st.toggle_focus(key.clone())>
                 <b>{n.name}</b>
@@ -162,6 +184,10 @@ fn Beat(id: u64) -> impl IntoView {
             id=dom_id(id)
             on:dragover=move |ev| dnd::over(st, id, &ev)
             on:drop=move |ev| dnd::drop(st, &ev)
+            on:click=move |_| st.select(id)
+            on:focusin=move |_| st.select(id)
+            on:mouseenter=move |_| st.pointed.set(Some(id))
+            on:mouseleave=move |_| st.pointed.set(None)
         >
             <div class="margin">
                 {more(st, id)}
@@ -170,7 +196,8 @@ fn Beat(id: u64) -> impl IntoView {
                     {number}
                 </span>
             </div>
-            <div class="grow" data-value=move || text.get()>
+            <div class="grow" class:sel=move || st.is_selected(id)>
+                <div class="mirror" aria-hidden="true">{move || marked(&text.get(), &st.lit_spans(id))}</div>
                 <textarea
                     rows="1"
                     aria-label="Texte du beat"
@@ -182,4 +209,22 @@ fn Beat(id: u64) -> impl IntoView {
             <div class="notes">{move || notes.get().into_iter().map(note).collect_view()}</div>
         </div>
     }
+}
+
+/// The text of a beat with its lit occurrences marked, laid under the text
+/// field, which it also sizes: a trailing space keeps a last empty line.
+fn marked(text: &str, spans: &[std::ops::Range<usize>]) -> impl IntoView + use<> {
+    let mut parts = Vec::new();
+    let mut at = 0;
+    for span in spans.iter().filter(|s| s.end <= text.len()) {
+        if span.start < at || !text.is_char_boundary(span.start) || !text.is_char_boundary(span.end)
+        {
+            continue;
+        }
+        parts.push(text[at..span.start].to_string().into_any());
+        parts.push(view! { <mark>{text[span.clone()].to_string()}</mark> }.into_any());
+        at = span.end;
+    }
+    parts.push(format!("{} ", &text[at..]).into_any());
+    parts
 }

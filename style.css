@@ -10,6 +10,7 @@
 :root {
   --paper: #ffffff; --side: #f6f6f4; --ink: #111111; --mute: #8a8a8a; --line: #e4e4e2;
   --acc: #c0262d; --acc-soft: #fbe9e9; --blue: #2f64b0;
+  --tint: #ededea; --sel: #d9d9d4;
   --type: "Courier Prime", "Courier New", monospace;
   /* Sizes grow with the width, from a phone to an ultra-wide screen. */
   --ui: clamp(12.5px, calc(0.18vw + 10.5px), 16px);
@@ -21,6 +22,7 @@
 :root.dark {
   --paper: #151515; --side: #1b1b1b; --ink: #e8e6e3; --mute: #808080; --line: #2c2c2c;
   --acc: #e5484f; --acc-soft: #3a1c1d; --blue: #6c9fd6;
+  --tint: #252525; --sel: #3a3a3a;
   color-scheme: dark;
 }
 
@@ -49,7 +51,7 @@ input:focus, textarea:focus { outline: none; }
 .title:hover { border-bottom-color: var(--line); }
 .title:focus { border-bottom-color: var(--mute); }
 .grip { cursor: grab; user-select: none; }
-.hl { background: var(--acc-soft); box-shadow: inset 2px 0 var(--acc); }
+.hl { background: var(--acc-soft); }
 .drop-before { box-shadow: inset 0 2px var(--blue); }
 .drop-after { box-shadow: inset 0 -2px var(--blue); }
 .drop-into { box-shadow: inset 0 0 0 1px var(--blue); }
@@ -79,38 +81,47 @@ input:focus, textarea:focus { outline: none; }
 .row.heading:first-child { margin-top: 0; }
 .row.link { cursor: pointer; }
 .row.link:hover { background: var(--line); }
-.row.link.on { font-weight: 700; box-shadow: inset 2px 0 var(--ink); }
+.row.sel, .row.link.sel:hover { background: var(--sel); }
 .row.link.hl { box-shadow: inset 2px 0 var(--acc); }
 .row.warns .label::after { content: " ▪"; color: var(--acc); }
 .tree-actions, .actions { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .tree-actions { margin-top: 16px; }
 .actions { margin-top: auto; padding-top: 24px; }
 
-/* The frieze */
+/* The frieze: one band, partitioned into acts, scenes and beats, whose
+   widths the page sets in proportion; separators are inset shadows, so that
+   they take no width. The arcs hang below. */
 .frieze { overflow-x: auto; overflow-y: hidden; background: var(--side); border-bottom: 1px solid var(--line); padding: 0 var(--pad); }
-.frieze-inner { position: relative; min-width: calc(var(--scenes) * 7.5em); padding-top: calc(var(--arc-h) + 8px); padding-bottom: 10px; }
-.arcs { position: absolute; left: 0; top: 6px; width: 100%; height: var(--arc-h); overflow: visible; }
-.arcs path { fill: none; stroke: var(--mute); stroke-opacity: 0.55; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
-.arcs path.focused { stroke: var(--acc); stroke-opacity: 1; stroke-width: 2.2; }
-.cards { display: grid; grid-template-columns: repeat(var(--scenes), minmax(0, 1fr)); gap: 6px; }
-.card { height: 3.6em; padding: 0.35em 0.6em; border: 1px solid var(--line); border-radius: 3px; background: var(--paper); overflow: hidden; }
-.card:hover { background: var(--line); }
-.card.first { border-left-color: var(--mute); }
-.card.on { border-color: var(--ink); }
-.card.hl { background: var(--acc-soft); }
-.card-title { display: block; white-space: nowrap; overflow: hidden; overflow: clip; text-overflow: ellipsis; }
-.card .number { color: var(--mute); }
-.dots { display: flex; gap: 4px; margin-top: 0.35em; }
-.dots i { width: 0.55em; height: 0.55em; border-radius: 50%; background: var(--mute); opacity: 0.6; }
-.dots i.warns { background: var(--acc); opacity: 1; }
+.frieze-inner { min-width: calc(var(--weight) * 1em / 40); padding: 10px 0 8px; }
+.band { display: flex; background: var(--paper); box-shadow: inset 0 0 0 1px var(--mute); }
+.cell { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; box-shadow: inset 1px 0 var(--mute); }
+.band > .cell:first-child { box-shadow: none; }
+.row-of { display: flex; flex: 1; }
+.row-of > .cell:first-child { box-shadow: none; }
+.cell-title { display: block; width: 100%; padding: 0 0.5em; line-height: 1.8em; white-space: nowrap; overflow: hidden; overflow: clip; text-overflow: ellipsis; box-shadow: inset 0 -1px var(--line); }
+.act-cell > .cell-title { text-align: center; }
+.scene-cell > .cell-title { font-size: 0.9em; }
+.cell-title .number { color: var(--mute); }
+.beat-cell { height: 1.2em; }
+.cell-title:hover, .beat-cell:hover, .beat-cell.pointed { background: var(--tint); }
+.cell.sel > .cell-title, .beat-cell.sel { background: var(--sel); }
+.beat-cell.hl { background: var(--acc-soft); }
+.beat-cell.warns { background: var(--acc); }
+.arcs { display: block; width: 100%; height: var(--arc-h); overflow: visible; }
+.arcs path { fill: none; stroke: var(--mute); stroke-opacity: 0.6; stroke-width: 1.2; vector-effect: non-scaling-stroke; pointer-events: none; }
+.arcs path.hit { stroke: transparent; stroke-width: 12; pointer-events: stroke; cursor: pointer; }
+.arcs path.lit { stroke: var(--acc); stroke-opacity: 1; stroke-width: 2.2; }
 
 /* The script. Its sizes are in its own em, which grows with the width the
    script has: one page fills it up to a comfortable size; once two pages
    fit, it is set in pages side by side, as many as fit. */
 .script { container: script / inline-size; min-height: 0; min-width: 0; }
 .pages { height: 100%; overflow-y: auto; overflow-x: hidden; padding: 1.2em 1em 4em 0.4em; font-size: clamp(15px, calc(100cqi / 62), 24px); }
-.act-head { display: flex; align-items: center; gap: 0.5em; margin: 2em 0 0.7em 3em; color: var(--acc); font-size: 0.8em; letter-spacing: 0.12em; text-transform: uppercase; break-after: avoid; }
-.pages > .act-head:first-child { margin-top: 0; }
+.act { border-left: 2px solid transparent; }
+.scene { border-left: 2px solid transparent; margin-left: 4px; }
+.act.sel, .scene.sel { border-left-color: var(--mute); }
+.act-head { display: flex; align-items: center; gap: 0.5em; margin: 2em 0 0.7em calc(3em + 6px); color: var(--acc); font-size: 0.8em; letter-spacing: 0.12em; text-transform: uppercase; break-after: avoid; }
+.pages > .act:first-child > .act-head { margin-top: 0; }
 .act-head .title { flex: 1; min-width: 0; color: var(--acc); text-transform: uppercase; letter-spacing: 0.12em; }
 .scene { margin-bottom: 1.2em; }
 .slug { display: flex; align-items: center; gap: 0.6em; margin: 0 0 0.9em 3.75em; font-size: 0.8em; font-weight: 700; break-after: avoid; }
@@ -119,9 +130,11 @@ input:focus, textarea:focus { outline: none; }
 .beat { display: grid; grid-template-columns: 3em minmax(0, 64ch) minmax(14em, 1fr); gap: 0 1em; padding: 0.2em 0; margin-bottom: 0.8em; border-radius: 3px; break-inside: avoid; }
 .margin { display: flex; justify-content: flex-end; align-items: flex-start; gap: 2px; font-size: 0.8em; padding-top: 0.25em; }
 .margin .n { color: var(--mute); line-height: 1.8em; min-width: 1.4em; text-align: right; }
-.grow { display: grid; }
-.grow::after { content: attr(data-value) " "; visibility: hidden; white-space: pre-wrap; }
-.grow > textarea, .grow::after { grid-area: 1 / 1 / 2 / 2; font: 1em/1.75 var(--type); overflow-wrap: anywhere; padding: 0; margin: 0; }
+.grow { display: grid; border-left: 2px solid transparent; padding-left: 0.5em; margin-left: calc(-0.5em - 2px); }
+.grow.sel { border-left-color: var(--mute); }
+.mirror { white-space: pre-wrap; color: transparent; }
+.mirror mark { color: transparent; background: color-mix(in srgb, var(--acc) 30%, transparent); border-radius: 2px; }
+.grow > textarea, .grow > .mirror { grid-area: 1 / 1 / 2 / 2; font: 1em/1.75 var(--type); overflow-wrap: anywhere; padding: 0; margin: 0; }
 .grow > textarea { resize: none; overflow: hidden; }
 .grow > textarea::placeholder { color: var(--mute); font-style: italic; }
 .notes { display: flex; flex-direction: column; align-items: flex-start; gap: 0.4em; padding-top: 0.3em; font-size: 0.75em; max-width: 30em; }
@@ -177,11 +190,10 @@ input:focus, textarea:focus { outline: none; }
   .topbar { grid-area: topbar; display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); }
   .side { display: none; }
   .arcs { display: none; }
-  .frieze-inner { padding-top: 8px; min-width: calc(var(--scenes) * 9.5em); }
   .pages { font-size: 16px; padding: 1em 0.9em 3em 0; }
   .beat { grid-template-columns: 2.6em minmax(0, 1fr); }
   .notes { grid-column: 2; padding-top: 0.4em; }
-  .act-head { margin-left: 3.25em; }
+  .act-head { margin-left: calc(3.25em + 6px); }
   .slug { margin-left: 3.25em; }
   .script .btn.add { margin-left: 3.25em; }
 }
