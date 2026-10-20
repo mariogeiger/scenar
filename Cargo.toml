@@ -3,6 +3,7 @@ name = "scenar"
 version = "0.1.0"
 edition = "2024"
 description = "Un atelier d'écriture de scénario qui vérifie les setups et payoffs comme un compilateur."
+license = "MIT"
 publish = false
 
 [dependencies]

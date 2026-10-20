@@ -17,3 +17,8 @@ cargo test --lib     # le moteur et le modèle
 trunk serve          # http://localhost:8091
 ./deploy.sh          # publie sur https://scenar.geiger.ink
 ```
+
+## Licence
+
+Le code est sous licence MIT (voir `LICENSE`). La police Courier Prime,
+dans `fonts/`, reste sous sa propre licence SIL OFL 1.1 (`fonts/OFL.txt`).
