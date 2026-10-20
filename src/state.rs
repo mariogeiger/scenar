@@ -7,6 +7,42 @@ use scenar::model::{Level, Live, Side, Story};
 
 use crate::storage;
 
+/// Something that opens on a click, over the page, and closes on a click
+/// outside it or on Escape: nothing ever unfolds in place.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Popup {
+    /// The actions on a block.
+    Menu(u64),
+    Bin,
+    /// The elements and the warnings, where no panel shows them.
+    Panel,
+    /// The timeline, where no column shows it.
+    Timeline,
+}
+
+/// The box, in viewport pixels, of what opened a popup.
+#[derive(Clone, Copy, PartialEq)]
+pub struct Anchor {
+    pub left: f64,
+    pub top: f64,
+    pub right: f64,
+    pub bottom: f64,
+}
+
+impl Anchor {
+    /// The box of the element an event is handled on.
+    pub fn of(ev: &web_sys::Event) -> Anchor {
+        use wasm_bindgen::JsCast;
+        let rect = ev.current_target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()).map(|e| e.get_bounding_client_rect());
+        rect.map_or(Anchor { left: 0.0, top: 0.0, right: 0.0, bottom: 0.0 }, |r| Anchor {
+            left: r.left(),
+            top: r.top(),
+            right: r.right(),
+            bottom: r.bottom(),
+        })
+    }
+}
+
 /// What the margin says about one element of a beat.
 #[derive(Clone, PartialEq)]
 pub struct Note {
@@ -22,14 +58,18 @@ pub struct Note {
 #[derive(Clone, Copy)]
 pub struct State {
     pub story: RwSignal<Story>,
-    /// The scene chosen to be shown, which may have been archived since.
+    /// The scene most in view in the script, which may have been archived
+    /// since.
     pub chosen: RwSignal<Option<u64>>,
+    /// The scrolling box of the script.
+    pub script: NodeRef<leptos::html::Div>,
+    /// Until when, in milliseconds since the epoch, scrolling is the page's
+    /// own doing, so that what was chosen stays chosen.
+    pub scrolled_by_page_until: RwSignal<f64>,
     /// The key of the element whose beats are highlighted.
     pub focus: RwSignal<Option<String>>,
-    /// Whether the list of elements is unfolded above the footer.
-    pub elements_open: RwSignal<bool>,
+    pub popup: RwSignal<Option<(Popup, Anchor)>>,
     pub dark: RwSignal<bool>,
-    pub bin_open: RwSignal<bool>,
     /// The block being dragged, and where it would land.
     pub drag: RwSignal<Option<u64>>,
     pub drop: RwSignal<Option<(u64, Side)>>,
@@ -37,7 +77,7 @@ pub struct State {
     /// The living beats, in the order the engine numbers them.
     pub beats: Memo<Vec<u64>>,
     pub analysis: Memo<Analysis>,
-    /// The scene on screen: the chosen one if it lives, else the first.
+    /// The scene in view: the chosen one if it lives, else the first.
     pub scene: Memo<Option<u64>>,
 }
 
@@ -66,10 +106,11 @@ impl State {
         State {
             story,
             chosen,
+            script: NodeRef::new(),
+            scrolled_by_page_until: RwSignal::new(0.0),
             focus: RwSignal::new(None),
-            elements_open: RwSignal::new(false),
+            popup: RwSignal::new(None),
             dark,
-            bin_open: RwSignal::new(false),
             drag: RwSignal::new(None),
             drop: RwSignal::new(None),
             live,
@@ -89,13 +130,29 @@ impl State {
         self.beats.with(|b| b.iter().position(|&x| x == id))
     }
 
-    /// Whether the focused element occurs in the beat `id`.
-    pub fn highlighted(&self, id: u64) -> bool {
+    /// Whether the focused element occurs in the block `id` or below it.
+    pub fn holds_focus(&self, id: u64) -> bool {
         let Some(key) = self.focus.get() else { return false };
-        let Some(beat) = self.beat_index(id) else { return false };
+        let beats: Vec<usize> =
+            self.story.with(|s| s.subtree(id)).into_iter().filter_map(|b| self.beat_index(b)).collect();
         self.analysis.with(|a| {
-            a.element(&key).is_some_and(|e| a.elements[e].occurrences.iter().any(|o| o.at.0 == beat))
+            a.element(&key).is_some_and(|e| a.elements[e].occurrences.iter().any(|o| beats.contains(&o.at.0)))
         })
+    }
+
+    /// Opens `popup` from the element the event `ev` is handled on, or closes
+    /// it when it is the one open.
+    pub fn toggle_popup(&self, popup: Popup, ev: &web_sys::Event) {
+        let anchor = Anchor::of(ev);
+        self.popup.update(|p| *p = if p.map(|(q, _)| q) == Some(popup) { None } else { Some((popup, anchor)) });
+    }
+
+    pub fn close_popup(&self) {
+        self.popup.set(None);
+    }
+
+    pub fn is_open(&self, popup: Popup) -> bool {
+        self.popup.with(|p| p.is_some_and(|(q, _)| q == popup))
     }
 
     /// The margin notes of the beat `id`: one per element and kind, in text
@@ -156,11 +213,50 @@ impl State {
         self.focus.update(|f| *f = if f.as_deref() == Some(&key) { None } else { Some(key) });
     }
 
-    /// Shows the scene of the beat `id`, and scrolls to it.
-    pub fn show_beat(&self, id: u64) {
-        let scene = self.story.with_untracked(|s| s.parent(id));
-        self.chosen.set(scene);
+    /// Chooses the scene of the block `id` and scrolls the script to it: a
+    /// scene or an act to its start, a beat to the middle of the view.
+    pub fn reveal(&self, id: u64) {
+        let scene = self.live.with_untracked(|l| {
+            let node = l.iter().find(|n| n.id == id)?;
+            match node.level {
+                Level::Act => l.iter().find(|n| n.parent == Some(id)).map(|n| n.id),
+                Level::Scene => Some(id),
+                Level::Beat => node.parent,
+            }
+        });
+        if scene.is_some() {
+            self.chosen.set(scene);
+        }
+        self.scrolled_by_page_until.set(js_sys::Date::now() + 1200.0);
         set_timeout(move || storage::reveal(id), std::time::Duration::from_millis(30));
+    }
+
+    /// Chooses the scene being read as the reader scrolls: the last whose
+    /// heading has passed the reading line, a third down the view, or in
+    /// pages, a quarter across.
+    pub fn spy(&self) {
+        if js_sys::Date::now() < self.scrolled_by_page_until.get_untracked() {
+            return;
+        }
+        let Some(root) = self.script.get_untracked() else { return };
+        let view = root.get_bounding_client_rect();
+        let across = root.scroll_width() > root.client_width();
+        let scenes: Vec<u64> =
+            self.live.with_untracked(|l| l.iter().filter(|n| n.level == Level::Scene).map(|n| n.id).collect());
+        let document = root.owner_document().expect("a document");
+        let passed = |id: &u64| {
+            let Some(head) = document.get_element_by_id(&storage::dom_id(*id)) else { return false };
+            let r = head.get_bounding_client_rect();
+            if across {
+                r.left() < view.left() + view.width() / 4.0
+            } else {
+                r.top() < view.top() + view.height() / 3.0
+            }
+        };
+        let read = scenes.iter().copied().take_while(|id| passed(id)).last().or(scenes.first().copied());
+        if read.is_some() && self.chosen.get_untracked() != read {
+            self.chosen.set(read);
+        }
     }
 
     /// Archives a block, after listing the elements that also occur outside
@@ -232,72 +328,6 @@ impl State {
                 }
             }
             Err(e) => storage::alert(&format!("Ce fichier n'est pas un scénario : {e}")),
-        }
-    }
-}
-
-/// Drag and drop, shared by the rows of the timeline and the beats.
-pub mod dnd {
-    use super::*;
-    use wasm_bindgen::JsCast;
-    use web_sys::DragEvent;
-
-    pub fn start(st: State, id: u64, ev: &DragEvent) {
-        st.drag.set(Some(id));
-        if let Some(dt) = ev.data_transfer() {
-            let _ = dt.set_data("text/plain", &id.to_string());
-            dt.set_effect_allowed("move");
-        }
-    }
-
-    /// Shows where the dragged block would land on `target`: before or after
-    /// it by the half the pointer is in.
-    pub fn over(st: State, target: u64, ev: &DragEvent) {
-        let Some(id) = st.drag.get_untracked() else { return };
-        if !st.story.with_untracked(|s| s.can_place(id, target)) {
-            return;
-        }
-        ev.prevent_default();
-        ev.stop_propagation();
-        let side = ev
-            .current_target()
-            .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
-            .map(|el| el.get_bounding_client_rect())
-            .map_or(Side::After, |r| {
-                if (ev.client_y() as f64) < r.top() + r.height() / 2.0 { Side::Before } else { Side::After }
-            });
-        if st.drop.get_untracked() != Some((target, side)) {
-            st.drop.set(Some((target, side)));
-        }
-    }
-
-    pub fn drop(st: State, ev: &DragEvent) {
-        ev.prevent_default();
-        ev.stop_propagation();
-        if let (Some(id), Some((target, side))) = (st.drag.get_untracked(), st.drop.get_untracked()) {
-            st.story.update(|s| {
-                s.place(id, target, side);
-            });
-        }
-        end(st);
-    }
-
-    pub fn end(st: State) {
-        st.drag.set(None);
-        st.drop.set(None);
-    }
-
-    /// The class that draws the landing line on `target`.
-    pub fn class(st: State, target: u64) -> &'static str {
-        match (st.drop.get(), st.drag.get()) {
-            (Some((t, side)), Some(id)) if t == target => {
-                if st.story.with_untracked(|s| s.level(id) == s.level(target)) {
-                    if side == Side::Before { " drop-before" } else { " drop-after" }
-                } else {
-                    " drop-into"
-                }
-            }
-            _ => "",
         }
     }
 }

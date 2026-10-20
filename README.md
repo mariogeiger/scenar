@@ -9,7 +9,7 @@ scénario se sauve dans le navigateur et s'exporte en JSON.
 - `src/engine.rs` : le moteur de dépendances et ses quatre règles.
 - `src/model.rs` : l'arbre Acte → Scène → Beat, l'archivage, le format JSON.
 - `src/example.rs` : le scénario d'exemple de la première visite.
-- `src/state.rs`, `src/storage.rs`, `src/ui/` : la page ; `fonts/` : Courier Prime (OFL).
+- `src/state.rs`, `src/dnd.rs`, `src/storage.rs`, `src/ui/` : la page ; `fonts/` : Courier Prime (OFL).
 - `DECISIONS.md` : les décisions de conception.
 
 ```

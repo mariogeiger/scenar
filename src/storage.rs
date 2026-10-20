@@ -93,9 +93,26 @@ pub fn alert(message: &str) {
     let _ = window().alert_with_message(message);
 }
 
-/// Brings the beat `id` of the scene on screen into view.
+/// The id of the element that shows the block `id` in the script.
+pub fn dom_id(id: u64) -> String {
+    format!("block-{id}")
+}
+
+/// Scrolls the script to the block `id`: to its start, or for a beat to the
+/// middle of the view, across pages as well as down.
 pub fn reveal(id: u64) {
-    if let Some(el) = window().document().and_then(|d| d.get_element_by_id(&format!("beat-{id}"))) {
-        el.scroll_into_view();
-    }
+    let Some(el) = window().document().and_then(|d| d.get_element_by_id(&dom_id(id))) else { return };
+    let options = web_sys::ScrollIntoViewOptions::new();
+    options.set_behavior(web_sys::ScrollBehavior::Smooth);
+    let beat = el.class_list().contains("beat");
+    options.set_block(if beat { web_sys::ScrollLogicalPosition::Center } else { web_sys::ScrollLogicalPosition::Start });
+    options.set_inline(web_sys::ScrollLogicalPosition::Nearest);
+    el.scroll_into_view_with_scroll_into_view_options(&options);
+}
+
+/// The width and height of the window.
+pub fn viewport() -> (f64, f64) {
+    let w = window();
+    let size = |v: Result<JsValue, JsValue>| v.ok().and_then(|v| v.as_f64()).unwrap_or(0.0);
+    (size(w.inner_width()), size(w.inner_height()))
 }

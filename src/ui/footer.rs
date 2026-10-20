@@ -1,16 +1,9 @@
-//! The footer: one line that counts the elements and lists the warnings,
-//! and above it, when unfolded, every element with where it occurs.
+//! The footer: one line that counts the elements, opening the panel, and
+//! lists the warnings, each going to its beat.
 
 use leptos::prelude::*;
 
-use crate::state::State;
-
-/// Opens the beat `beat` of the engine's numbering.
-fn open(st: State, beat: usize) {
-    if let Some(id) = st.beats.with_untracked(|b| b.get(beat).copied()) {
-        st.show_beat(id);
-    }
-}
+use crate::state::{Popup, State};
 
 #[component]
 pub fn Footer() -> impl IntoView {
@@ -30,7 +23,9 @@ pub fn Footer() -> impl IntoView {
             .map(|(i, (name, key, rule, beat))| {
                 let go = move |_| {
                     st.focus.set(Some(key.clone()));
-                    open(st, beat);
+                    if let Some(id) = st.beats.with_untracked(|b| b.get(beat).copied()) {
+                        st.reveal(id);
+                    }
                 };
                 view! {
                     {if i == 0 { " — " } else { " · " }}
@@ -50,67 +45,12 @@ pub fn Footer() -> impl IntoView {
         }
     };
     view! {
-        <footer>
-            <Show when=move || st.elements_open.get()>
-                <Elements/>
-            </Show>
-            <div class="line">
-                <button class="count" on:click=move |_| st.elements_open.update(|o| *o = !*o)>
-                    {move || format!("{} {} élément{}", if st.elements_open.get() { "▾" } else { "▴" }, count(), if count() == 1 { "" } else { "s" })}
-                </button>
-                " · "
-                {warnings}
-            </div>
+        <footer class="footer">
+            <button class="btn" on:click=move |ev| st.toggle_popup(Popup::Panel, &ev)>
+                {move || format!("{} élément{}", count(), if count() == 1 { "" } else { "s" })}
+            </button>
+            " · "
+            {warnings}
         </footer>
     }
-}
-
-#[component]
-fn Elements() -> impl IntoView {
-    let st = expect_context::<State>();
-    let rows = move || {
-        let rows = st.analysis.with(|a| {
-            a.elements
-                .iter()
-                .map(|e| {
-                    let mut flow: Vec<(usize, &'static str)> =
-                        e.occurrences.iter().map(|o| (o.at.0, o.kind.symbol())).collect();
-                    flow.dedup();
-                    (e.name.clone(), e.key.clone(), e.aliases.join(", "), flow)
-                })
-                .collect::<Vec<_>>()
-        });
-        if rows.is_empty() {
-            return view! { <p class="empty">"Aucun élément. Écris @nom dans un beat pour en déclarer un."</p> }
-                .into_any();
-        }
-        rows.into_iter()
-            .map(|(name, key, aliases, flow)| {
-                let focused = {
-                    let key = key.clone();
-                    move || st.focus.get().as_deref() == Some(key.as_str())
-                };
-                let flow = flow
-                    .into_iter()
-                    .map(|(beat, symbol)| {
-                        view! {
-                            <button class="at" on:click=move |_| open(st, beat)>
-                                {symbol}" "{st.beat_label(beat)}
-                            </button>
-                        }
-                    })
-                    .collect_view();
-                view! {
-                    <div class="element" class:focused=focused>
-                        <button class="name" on:click=move |_| st.toggle_focus(key.clone())>{name}</button>
-                        " "
-                        <span class="aliases">{aliases}</span>
-                        <span class="flow">{flow}</span>
-                    </div>
-                }
-            })
-            .collect_view()
-            .into_any()
-    };
-    view! { <div class="elements">{rows}</div> }
 }

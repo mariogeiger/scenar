@@ -34,6 +34,15 @@ impl Level {
         }
     }
 
+    /// Its name with the indefinite article: `un acte`.
+    pub fn indefinite(self) -> &'static str {
+        match self {
+            Level::Act => "un acte",
+            Level::Scene => "une scène",
+            Level::Beat => "un beat",
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Level::Act => "Acte",
