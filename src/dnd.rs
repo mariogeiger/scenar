@@ -32,11 +32,7 @@ pub fn over(st: State, target: u64, ev: &DragEvent) {
         .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
         .map(|el| el.get_bounding_client_rect())
         .map_or(Side::After, |r| {
-            if (ev.client_y() as f64) < r.top() + r.height() / 2.0 {
-                Side::Before
-            } else {
-                Side::After
-            }
+            if (ev.client_y() as f64) < r.top() + r.height() / 2.0 { Side::Before } else { Side::After }
         });
     if st.drop.get_untracked() != Some((target, side)) {
         st.drop.set(Some((target, side)));
@@ -64,11 +60,7 @@ pub fn class(st: State, target: u64) -> &'static str {
     match (st.drop.get(), st.drag.get()) {
         (Some((t, side)), Some(id)) if t == target => {
             if st.story.with_untracked(|s| s.level(id) == s.level(target)) {
-                if side == Side::Before {
-                    " drop-before"
-                } else {
-                    " drop-after"
-                }
+                if side == Side::Before { " drop-before" } else { " drop-after" }
             } else {
                 " drop-into"
             }

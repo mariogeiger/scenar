@@ -40,17 +40,9 @@ fn place(a: Anchor) -> String {
         format!("left: {}px;", a.left)
     };
     let down = if a.bottom > h * 0.6 {
-        format!(
-            "bottom: {}px; max-height: {}px;",
-            h - a.top + 4.0,
-            a.top - 12.0
-        )
+        format!("bottom: {}px; max-height: {}px;", h - a.top + 4.0, a.top - 12.0)
     } else {
-        format!(
-            "top: {}px; max-height: {}px;",
-            a.bottom + 4.0,
-            h - a.bottom - 12.0
-        )
+        format!("top: {}px; max-height: {}px;", a.bottom + 4.0, h - a.bottom - 12.0)
     };
     across + &down
 }
@@ -76,16 +68,10 @@ fn menu(st: State, id: u64) -> AnyView {
     let mut items: Vec<(String, Box<dyn Fn()>)> = vec![
         ("↑ Monter".into(), Box::new(move || step(Side::Before))),
         ("↓ Descendre".into(), Box::new(move || step(Side::After))),
-        (
-            format!("+ Ajouter {} après", level.indefinite()),
-            Box::new(move || add(parent, Some(id))),
-        ),
+        (format!("+ Ajouter {} après", level.indefinite()), Box::new(move || add(parent, Some(id)))),
     ];
     if let Some(child) = level.child() {
-        items.push((
-            format!("+ Ajouter {} à la fin", child.indefinite()),
-            Box::new(move || add(Some(id), None)),
-        ));
+        items.push((format!("+ Ajouter {} à la fin", child.indefinite()), Box::new(move || add(Some(id), None))));
     }
     items.push(("× Archiver".into(), Box::new(move || st.archive(id))));
     view! {
@@ -108,12 +94,8 @@ fn menu(st: State, id: u64) -> AnyView {
 /// The archived blocks, each restorable or deletable for good.
 fn bin(st: State) -> impl IntoView {
     move || {
-        let items = st.story.with(|s| {
-            s.archived()
-                .into_iter()
-                .map(|(id, level)| (id, level, s.label(id)))
-                .collect::<Vec<_>>()
-        });
+        let items =
+            st.story.with(|s| s.archived().into_iter().map(|(id, level)| (id, level, s.label(id))).collect::<Vec<_>>());
         let rows = items
             .into_iter()
             .map(|(id, level, label)| {

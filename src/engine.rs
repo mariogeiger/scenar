@@ -113,12 +113,7 @@ impl Analysis {
             .elements
             .iter()
             .enumerate()
-            .flat_map(|(e, el)| {
-                el.occurrences
-                    .iter()
-                    .filter(move |o| o.at.0 == beat)
-                    .map(move |o| (o.at.1, e, o.kind))
-            })
+            .flat_map(|(e, el)| el.occurrences.iter().filter(move |o| o.at.0 == beat).map(move |o| (o.at.1, e, o.kind)))
             .collect();
         found.sort();
         let mut seen = Vec::new();
@@ -142,20 +137,12 @@ impl Analysis {
             .iter()
             .enumerate()
             .flat_map(|(element, el)| {
-                let setup = el
-                    .occurrences
-                    .iter()
-                    .find(|o| o.kind == Kind::Setup)
-                    .map(|o| o.at);
+                let setup = el.occurrences.iter().find(|o| o.kind == Kind::Setup).map(|o| o.at);
                 setup.into_iter().flat_map(move |setup| {
                     el.occurrences
                         .iter()
                         .filter(move |o| o.kind == Kind::Payoff && o.at > setup)
-                        .map(move |o| Dependency {
-                            element,
-                            setup,
-                            payoff: o.at,
-                        })
+                        .map(move |o| Dependency { element, setup, payoff: o.at })
                 })
             })
             .collect()
@@ -177,10 +164,8 @@ pub fn analyze<'a>(texts: impl IntoIterator<Item = &'a str>) -> Analysis {
         .into_iter()
         .map(|text| {
             let marks = markers(text);
-            let free = words(text)
-                .into_iter()
-                .filter(|(at, _)| !marks.iter().any(|m| m.span.contains(&at.start)))
-                .collect();
+            let free =
+                words(text).into_iter().filter(|(at, _)| !marks.iter().any(|m| m.span.contains(&at.start))).collect();
             (marks, free)
         })
         .collect();
@@ -195,11 +180,7 @@ pub fn analyze<'a>(texts: impl IntoIterator<Item = &'a str>) -> Analysis {
         for m in marks.iter().filter(|m| m.kind == Kind::Setup) {
             let e = intern(&mut elements, &mut index, &m.name);
             phrases.push((key(&m.name), e));
-            elements[e].occurrences.push(Occurrence {
-                kind: Kind::Setup,
-                at: (b, m.span.start),
-                end: m.span.end,
-            });
+            elements[e].occurrences.push(Occurrence { kind: Kind::Setup, at: (b, m.span.start), end: m.span.end });
             for alias in &m.aliases {
                 let words = key(alias);
                 if words.is_empty() || phrases.iter().any(|(p, _)| *p == words) {
@@ -219,11 +200,7 @@ pub fn analyze<'a>(texts: impl IntoIterator<Item = &'a str>) -> Analysis {
                 Some(&e) => e,
                 None => intern(&mut elements, &mut index, &m.name),
             };
-            elements[e].occurrences.push(Occurrence {
-                kind: Kind::Payoff,
-                at: (b, m.span.start),
-                end: m.span.end,
-            });
+            elements[e].occurrences.push(Occurrence { kind: Kind::Payoff, at: (b, m.span.start), end: m.span.end });
         }
     }
 
@@ -240,11 +217,7 @@ pub fn analyze<'a>(texts: impl IntoIterator<Item = &'a str>) -> Analysis {
             match found {
                 Some((e, n)) => {
                     let (start, end) = (free[i].0.start, free[i + n - 1].0.end);
-                    elements[e].occurrences.push(Occurrence {
-                        kind: Kind::Mention,
-                        at: (b, start),
-                        end,
-                    });
+                    elements[e].occurrences.push(Occurrence { kind: Kind::Mention, at: (b, start), end });
                     i += n;
                 }
                 None => i += 1,
@@ -259,19 +232,8 @@ pub fn analyze<'a>(texts: impl IntoIterator<Item = &'a str>) -> Analysis {
 
     let mut warnings = Vec::new();
     for (e, el) in elements.iter().enumerate() {
-        let mut warn = |rule, beat| {
-            warnings.push(Warning {
-                rule,
-                element: e,
-                beat,
-            })
-        };
-        let setups: Vec<Position> = el
-            .occurrences
-            .iter()
-            .filter(|o| o.kind == Kind::Setup)
-            .map(|o| o.at)
-            .collect();
+        let mut warn = |rule, beat| warnings.push(Warning { rule, element: e, beat });
+        let setups: Vec<Position> = el.occurrences.iter().filter(|o| o.kind == Kind::Setup).map(|o| o.at).collect();
         match setups.first() {
             None => {
                 for o in el.occurrences.iter().filter(|o| o.kind == Kind::Payoff) {
@@ -279,21 +241,13 @@ pub fn analyze<'a>(texts: impl IntoIterator<Item = &'a str>) -> Analysis {
                 }
             }
             Some(&first) => {
-                for o in el
-                    .occurrences
-                    .iter()
-                    .filter(|o| o.kind != Kind::Setup && o.at < first)
-                {
+                for o in el.occurrences.iter().filter(|o| o.kind != Kind::Setup && o.at < first) {
                     warn(Rule::UsedBeforeDeclared, o.at.0);
                 }
                 for s in &setups[1..] {
                     warn(Rule::DeclaredTwice, s.0);
                 }
-                if !el
-                    .occurrences
-                    .iter()
-                    .any(|o| o.kind == Kind::Payoff && o.at > first)
-                {
+                if !el.occurrences.iter().any(|o| o.kind == Kind::Payoff && o.at > first) {
                     warn(Rule::NeverPaid, first.0);
                 }
             }
@@ -306,11 +260,7 @@ pub fn analyze<'a>(texts: impl IntoIterator<Item = &'a str>) -> Analysis {
 }
 
 /// The element that `phrase` names, made on first sight.
-fn intern(
-    elements: &mut Vec<Element>,
-    index: &mut HashMap<Vec<String>, usize>,
-    phrase: &str,
-) -> usize {
+fn intern(elements: &mut Vec<Element>, index: &mut HashMap<Vec<String>, usize>, phrase: &str) -> usize {
     let words = key(phrase);
     *index.entry(words.clone()).or_insert_with(|| {
         elements.push(Element {
@@ -387,11 +337,7 @@ fn markers(text: &str) -> Vec<Marker> {
             '!' => Some(Kind::Payoff),
             _ => None,
         };
-        let len = if kind.is_some() && !after_word {
-            name_length(&text[i + 1..])
-        } else {
-            0
-        };
+        let len = if kind.is_some() && !after_word { name_length(&text[i + 1..]) } else { 0 };
         if let Some(kind) = kind
             && len > 0
         {
@@ -403,20 +349,11 @@ fn markers(text: &str) -> Vec<Marker> {
                 && let Some(close) = inner.find([')', '\n'])
                 && inner[close..].starts_with(')')
             {
-                aliases = inner[..close]
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|a| !a.is_empty())
-                    .map(String::from)
-                    .collect();
+                aliases =
+                    inner[..close].split(',').map(str::trim).filter(|a| !a.is_empty()).map(String::from).collect();
                 end += close + 2;
             }
-            out.push(Marker {
-                kind,
-                name: text[start..start + len].to_string(),
-                aliases,
-                span: i..end,
-            });
+            out.push(Marker { kind, name: text[start..start + len].to_string(), aliases, span: i..end });
             while chars.next_if(|&(j, _)| j < end).is_some() {}
             after_word = text[..end].chars().next_back().is_some_and(is_word);
             continue;
@@ -432,52 +369,32 @@ mod tests {
 
     fn warnings(texts: &[&str]) -> Vec<(Rule, String, usize)> {
         let a = analyze(texts.iter().copied());
-        a.warnings
-            .iter()
-            .map(|w| (w.rule, a.elements[w.element].name.clone(), w.beat))
-            .collect()
+        a.warnings.iter().map(|w| (w.rule, a.elements[w.element].name.clone(), w.beat)).collect()
     }
 
     fn kinds(texts: &[&str], name: &str) -> Vec<(Kind, usize)> {
         let a = analyze(texts.iter().copied());
         let e = a.element(name).expect("element");
-        a.elements[e]
-            .occurrences
-            .iter()
-            .map(|o| (o.kind, o.at.0))
-            .collect()
+        a.elements[e].occurrences.iter().map(|o| (o.kind, o.at.0)).collect()
     }
 
     #[test]
     fn setup_then_payoff_is_clean() {
-        let t = [
-            "Un @pistolet dans le tiroir.",
-            "Le pistolet brille.",
-            "Elle tire : !pistolet.",
-        ];
+        let t = ["Un @pistolet dans le tiroir.", "Le pistolet brille.", "Elle tire : !pistolet."];
         assert!(warnings(&t).is_empty());
-        assert_eq!(
-            kinds(&t, "pistolet"),
-            [(Kind::Setup, 0), (Kind::Mention, 1), (Kind::Payoff, 2)]
-        );
+        assert_eq!(kinds(&t, "pistolet"), [(Kind::Setup, 0), (Kind::Mention, 1), (Kind::Payoff, 2)]);
     }
 
     #[test]
     fn setup_without_payoff_is_never_paid() {
-        assert_eq!(
-            warnings(&["Une @lettre.", "La lettre."]),
-            [(Rule::NeverPaid, "lettre".into(), 0)]
-        );
+        assert_eq!(warnings(&["Une @lettre.", "La lettre."]), [(Rule::NeverPaid, "lettre".into(), 0)]);
     }
 
     #[test]
     fn payoff_before_its_only_setup_is_used_before_declared_and_never_paid() {
         assert_eq!(
             warnings(&["!radio", "@radio"]),
-            [
-                (Rule::UsedBeforeDeclared, "radio".into(), 0),
-                (Rule::NeverPaid, "radio".into(), 1)
-            ]
+            [(Rule::UsedBeforeDeclared, "radio".into(), 0), (Rule::NeverPaid, "radio".into(), 1)]
         );
     }
 
@@ -492,26 +409,17 @@ mod tests {
     #[test]
     fn order_counts_within_a_beat() {
         assert_eq!(warnings(&["@x puis !x"]), []);
-        assert_eq!(
-            warnings(&["x puis @x et !x"]),
-            [(Rule::UsedBeforeDeclared, "x".into(), 0)]
-        );
+        assert_eq!(warnings(&["x puis @x et !x"]), [(Rule::UsedBeforeDeclared, "x".into(), 0)]);
     }
 
     #[test]
     fn payoff_without_setup_is_paid_undeclared() {
-        assert_eq!(
-            warnings(&["La !clé."]),
-            [(Rule::PaidUndeclared, "clé".into(), 0)]
-        );
+        assert_eq!(warnings(&["La !clé."]), [(Rule::PaidUndeclared, "clé".into(), 0)]);
     }
 
     #[test]
     fn second_setup_is_declared_twice() {
-        assert_eq!(
-            warnings(&["@chien", "@Chien", "!chien"]),
-            [(Rule::DeclaredTwice, "chien".into(), 1)]
-        );
+        assert_eq!(warnings(&["@chien", "@Chien", "!chien"]), [(Rule::DeclaredTwice, "chien".into(), 1)]);
     }
 
     #[test]
@@ -524,12 +432,7 @@ mod tests {
         assert!(warnings(&t).is_empty());
         assert_eq!(
             kinds(&t, "pistolet"),
-            [
-                (Kind::Setup, 0),
-                (Kind::Mention, 1),
-                (Kind::Mention, 1),
-                (Kind::Payoff, 2)
-            ]
+            [(Kind::Setup, 0), (Kind::Mention, 1), (Kind::Mention, 1), (Kind::Payoff, 2)]
         );
         let a = analyze(t);
         assert_eq!(a.elements[0].aliases, ["flingue", "vieux revolver", "arme"]);
@@ -538,24 +441,12 @@ mod tests {
     #[test]
     fn mentions_are_whole_words_with_accents_and_no_plurals() {
         let t = ["La @clé.", "Les clés, la cle, le porte-clé, CLÉ !clé"];
-        assert_eq!(
-            kinds(&t, "clé"),
-            [
-                (Kind::Setup, 0),
-                (Kind::Mention, 1),
-                (Kind::Mention, 1),
-                (Kind::Payoff, 1)
-            ]
-        );
+        assert_eq!(kinds(&t, "clé"), [(Kind::Setup, 0), (Kind::Mention, 1), (Kind::Mention, 1), (Kind::Payoff, 1)]);
     }
 
     #[test]
     fn markers_need_a_word_start() {
-        assert!(
-            analyze(["robin@geiger.ink", "Bang! Pan!", "@ seul, ! seul"])
-                .elements
-                .is_empty()
-        );
+        assert!(analyze(["robin@geiger.ink", "Bang! Pan!", "@ seul, ! seul"]).elements.is_empty());
     }
 
     #[test]
@@ -568,11 +459,7 @@ mod tests {
     #[test]
     fn dependencies_run_from_the_first_setup_to_each_later_payoff() {
         let a = analyze(["!x", "@x", "!x et @x", "!x"]);
-        let d: Vec<_> = a
-            .dependencies()
-            .iter()
-            .map(|d| (d.setup.0, d.payoff.0))
-            .collect();
+        let d: Vec<_> = a.dependencies().iter().map(|d| (d.setup.0, d.payoff.0)).collect();
         assert_eq!(d, [(1, 2), (1, 3)]);
     }
 
@@ -580,29 +467,17 @@ mod tests {
     fn occurrences_span_their_words() {
         let t = "Un @vieux-revolver(arme) ; l'Arme ; !arme.";
         let a = analyze([t]);
-        let spans: Vec<&str> = a.elements[0]
-            .occurrences
-            .iter()
-            .map(|o| &t[o.at.1..o.end])
-            .collect();
+        let spans: Vec<&str> = a.elements[0].occurrences.iter().map(|o| &t[o.at.1..o.end]).collect();
         assert_eq!(spans, ["@vieux-revolver(arme)", "Arme", "!arme"]);
     }
 
     #[test]
     fn beat_lists_each_element_once_per_kind_in_text_order() {
         let a = analyze(["La @lettre, le @pistolet, la lettre, la lettre."]);
-        let names: Vec<_> = a
-            .in_beat(0)
-            .iter()
-            .map(|&(e, k)| (a.elements[e].name.clone(), k))
-            .collect();
+        let names: Vec<_> = a.in_beat(0).iter().map(|&(e, k)| (a.elements[e].name.clone(), k)).collect();
         assert_eq!(
             names,
-            [
-                ("lettre".into(), Kind::Setup),
-                ("pistolet".into(), Kind::Setup),
-                ("lettre".into(), Kind::Mention)
-            ]
+            [("lettre".into(), Kind::Setup), ("pistolet".into(), Kind::Setup), ("lettre".into(), Kind::Mention)]
         );
     }
 }

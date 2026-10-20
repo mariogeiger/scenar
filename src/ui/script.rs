@@ -17,12 +17,7 @@ use crate::storage::dom_id;
 /// The living children of `id`, or the acts for `None`.
 fn children(st: State, id: Option<u64>, level: Level) -> Memo<Vec<u64>> {
     Memo::new(move |_| {
-        st.live.with(|l| {
-            l.iter()
-                .filter(|n| n.level == level && n.parent == id)
-                .map(|n| n.id)
-                .collect()
-        })
+        st.live.with(|l| l.iter().filter(|n| n.level == level && n.parent == id).map(|n| n.id).collect())
     })
 }
 
@@ -40,8 +35,7 @@ pub fn Script() -> impl IntoView {
         let Some(root) = st.script.get_untracked() else {
             return;
         };
-        if root.scroll_width() > root.client_width() && root.scroll_height() <= root.client_height()
-        {
+        if root.scroll_width() > root.client_width() && root.scroll_height() <= root.client_height() {
             root.set_scroll_left(root.scroll_left() + ev.delta_y() as i32);
             ev.prevent_default();
         }
@@ -143,18 +137,9 @@ fn Scene(id: u64) -> impl IntoView {
 #[component]
 fn Beat(id: u64) -> impl IntoView {
     let st = expect_context::<State>();
-    let text = Memo::new(move |_| {
-        st.story
-            .with(|s| s.find(id).map(|n| n.text.clone()).unwrap_or_default())
-    });
+    let text = Memo::new(move |_| st.story.with(|s| s.find(id).map(|n| n.text.clone()).unwrap_or_default()));
     let number = move || st.live_node(id).map(|n| n.number);
-    let class = move || {
-        format!(
-            "beat{}{}",
-            if st.holds_lit(id) { " hl" } else { "" },
-            dnd::class(st, id)
-        )
-    };
+    let class = move || format!("beat{}{}", if st.holds_lit(id) { " hl" } else { "" }, dnd::class(st, id));
     let notes = Memo::new(move |_| st.notes(id));
     let note = move |n: Note| {
         let kind = match n.kind {
@@ -217,8 +202,7 @@ fn marked(text: &str, spans: &[std::ops::Range<usize>]) -> impl IntoView + use<>
     let mut parts = Vec::new();
     let mut at = 0;
     for span in spans.iter().filter(|s| s.end <= text.len()) {
-        if span.start < at || !text.is_char_boundary(span.start) || !text.is_char_boundary(span.end)
-        {
+        if span.start < at || !text.is_char_boundary(span.start) || !text.is_char_boundary(span.end) {
             continue;
         }
         parts.push(text[at..span.start].to_string().into_any());

@@ -13,14 +13,7 @@ pub fn Footer() -> impl IntoView {
         let rows = st.analysis.with(|a| {
             a.warnings
                 .iter()
-                .map(|w| {
-                    (
-                        a.elements[w.element].name.clone(),
-                        a.elements[w.element].key.clone(),
-                        w.rule,
-                        w.beat,
-                    )
-                })
+                .map(|w| (a.elements[w.element].name.clone(), a.elements[w.element].key.clone(), w.rule, w.beat))
                 .collect::<Vec<_>>()
         });
         let n = rows.len();

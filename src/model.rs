@@ -76,17 +76,8 @@ impl Node {
             Level::Scene => "Nouvelle scène",
             Level::Beat => "",
         };
-        let children = level
-            .child()
-            .map(|l| vec![Node::fresh(l, next)])
-            .unwrap_or_default();
-        Node {
-            id,
-            title: title.into(),
-            text: String::new(),
-            archived: false,
-            children,
-        }
+        let children = level.child().map(|l| vec![Node::fresh(l, next)]).unwrap_or_default();
+        Node { id, title: title.into(), text: String::new(), archived: false, children }
     }
 }
 
@@ -119,11 +110,7 @@ pub struct Live {
 impl Story {
     /// One act holding one scene holding one empty beat.
     pub fn blank() -> Story {
-        let mut story = Story {
-            format: FORMAT,
-            title: "Sans titre".into(),
-            acts: Vec::new(),
-        };
+        let mut story = Story { format: FORMAT, title: "Sans titre".into(), acts: Vec::new() };
         story.add(None, None);
         story
     }
@@ -134,13 +121,9 @@ impl Story {
 
     /// Reads a story, refusing one this code cannot have written.
     pub fn from_json(json: &str) -> Result<Story, String> {
-        let story: Story =
-            serde_json::from_str(json).map_err(|e| format!("JSON illisible : {e}"))?;
+        let story: Story = serde_json::from_str(json).map_err(|e| format!("JSON illisible : {e}"))?;
         if story.format != FORMAT {
-            return Err(format!(
-                "format {} inconnu (attendu : {FORMAT})",
-                story.format
-            ));
+            return Err(format!("format {} inconnu (attendu : {FORMAT})", story.format));
         }
         fn check(nodes: &[Node], depth: usize, ids: &mut Vec<u64>) -> Result<(), String> {
             for n in nodes {
@@ -253,20 +236,14 @@ impl Story {
         let node = Node::fresh(level, &mut next);
         let id = node.id;
         let list = self.list_mut(&path);
-        let at = after
-            .and_then(|a| list.iter().position(|n| n.id == a))
-            .map_or(list.len(), |i| i + 1);
+        let at = after.and_then(|a| list.iter().position(|n| n.id == a)).map_or(list.len(), |i| i + 1);
         list.insert(at, node);
         Some(id)
     }
 
     fn next_id(&self) -> u64 {
         fn max(nodes: &[Node]) -> u64 {
-            nodes
-                .iter()
-                .map(|n| n.id.max(max(&n.children)))
-                .max()
-                .unwrap_or(0)
+            nodes.iter().map(|n| n.id.max(max(&n.children))).max().unwrap_or(0)
         }
         max(&self.acts) + 1
     }
@@ -331,8 +308,7 @@ impl Story {
         let path = self.path(target).expect("target is not below id");
         if beside {
             let (&i, parent) = path.split_last().expect("a path is never empty");
-            self.list_mut(parent)
-                .insert(i + (side == Side::After) as usize, node);
+            self.list_mut(parent).insert(i + (side == Side::After) as usize, node);
         } else {
             self.list_mut(&path).push(node);
         }
@@ -341,31 +317,10 @@ impl Story {
 
     /// The living blocks, in story order: each before its children.
     pub fn live(&self) -> Vec<Live> {
-        fn walk(
-            nodes: &[Node],
-            depth: usize,
-            parent: Option<u64>,
-            prefix: &str,
-            out: &mut Vec<Live>,
-        ) {
-            for (number, n) in nodes
-                .iter()
-                .filter(|n| !n.archived)
-                .enumerate()
-                .map(|(i, n)| (i + 1, n))
-            {
-                let label = if depth == 0 {
-                    roman(number)
-                } else {
-                    format!("{prefix}.{number}")
-                };
-                out.push(Live {
-                    id: n.id,
-                    level: Level::of_depth(depth),
-                    parent,
-                    number,
-                    label: label.clone(),
-                });
+        fn walk(nodes: &[Node], depth: usize, parent: Option<u64>, prefix: &str, out: &mut Vec<Live>) {
+            for (number, n) in nodes.iter().filter(|n| !n.archived).enumerate().map(|(i, n)| (i + 1, n)) {
+                let label = if depth == 0 { roman(number) } else { format!("{prefix}.{number}") };
+                out.push(Live { id: n.id, level: Level::of_depth(depth), parent, number, label: label.clone() });
                 walk(&n.children, depth + 1, Some(n.id), &label, out);
             }
         }
@@ -425,30 +380,13 @@ mod tests {
 
     /// Two acts; the first holds scenes 2 and 5, of beats 3, 4 and 6.
     fn story() -> Story {
-        let beat = |id| Node {
-            id,
-            title: String::new(),
-            text: format!("beat {id}"),
-            archived: false,
-            children: vec![],
-        };
-        let node = |id, children| Node {
-            id,
-            title: format!("n{id}"),
-            text: String::new(),
-            archived: false,
-            children,
-        };
+        let beat =
+            |id| Node { id, title: String::new(), text: format!("beat {id}"), archived: false, children: vec![] };
+        let node = |id, children| Node { id, title: format!("n{id}"), text: String::new(), archived: false, children };
         Story {
             format: FORMAT,
             title: "t".into(),
-            acts: vec![
-                node(
-                    1,
-                    vec![node(2, vec![beat(3), beat(4)]), node(5, vec![beat(6)])],
-                ),
-                node(7, vec![]),
-            ],
+            acts: vec![node(1, vec![node(2, vec![beat(3), beat(4)]), node(5, vec![beat(6)])]), node(7, vec![])],
         }
     }
 
@@ -465,22 +403,11 @@ mod tests {
         let mut s = story();
         assert_eq!(
             labels(&s),
-            [
-                (1, "I"),
-                (2, "I.1"),
-                (3, "I.1.1"),
-                (4, "I.1.2"),
-                (5, "I.2"),
-                (6, "I.2.1"),
-                (7, "II")
-            ]
-            .map(|(i, l)| (i, l.to_string()))
+            [(1, "I"), (2, "I.1"), (3, "I.1.1"), (4, "I.1.2"), (5, "I.2"), (6, "I.2.1"), (7, "II")]
+                .map(|(i, l)| (i, l.to_string()))
         );
         s.set_archived(2, true);
-        assert_eq!(
-            labels(&s),
-            [(1, "I"), (5, "I.1"), (6, "I.1.1"), (7, "II")].map(|(i, l)| (i, l.to_string()))
-        );
+        assert_eq!(labels(&s), [(1, "I"), (5, "I.1"), (6, "I.1.1"), (7, "II")].map(|(i, l)| (i, l.to_string())));
         assert_eq!(s.archived(), [(2, Level::Scene)]);
     }
 

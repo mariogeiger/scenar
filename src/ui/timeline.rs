@@ -12,12 +12,7 @@ use crate::state::{Popup, State};
 pub fn Timeline() -> impl IntoView {
     let st = expect_context::<State>();
     let rows = move || {
-        let shown: Vec<Live> = st.live.with(|l| {
-            l.iter()
-                .filter(|n| n.level != Level::Beat)
-                .cloned()
-                .collect()
-        });
+        let shown: Vec<Live> = st.live.with(|l| l.iter().filter(|n| n.level != Level::Beat).cloned().collect());
         shown.into_iter().map(|n| row(st, n)).collect_view()
     };
     let add_act = move |_| {
@@ -55,11 +50,7 @@ fn row(st: State, n: Live) -> impl IntoView {
         class
     };
     let label = move || st.story.with(|s| s.label(id));
-    let number = if act {
-        format!("{} · ", n.label)
-    } else {
-        String::new()
-    };
+    let number = if act { format!("{} · ", n.label) } else { String::new() };
     let open = move |_| {
         if !act {
             st.close_popup();

@@ -33,12 +33,7 @@ pub fn Frieze() -> impl IntoView {
             fn below(l: &[scenar::model::Live], parent: Option<u64>) -> Vec<Block> {
                 l.iter()
                     .filter(|n| n.parent == parent)
-                    .map(|n| Block {
-                        id: n.id,
-                        level: n.level,
-                        label: n.label.clone(),
-                        inner: below(l, Some(n.id)),
-                    })
+                    .map(|n| Block { id: n.id, level: n.level, label: n.label.clone(), inner: below(l, Some(n.id)) })
                     .collect()
             }
             below(l, None)
@@ -52,11 +47,7 @@ pub fn Frieze() -> impl IntoView {
                 (text(b.id) as f64).max(LEAST_WEIGHT)
             } else {
                 let sum: f64 = b.inner.iter().map(|c| weigh(c, text, out)).sum();
-                if b.inner.is_empty() {
-                    LEAST_WEIGHT
-                } else {
-                    sum
-                }
+                if b.inner.is_empty() { LEAST_WEIGHT } else { sum }
             };
             out.insert(b.id, w);
             w
@@ -69,10 +60,7 @@ pub fn Frieze() -> impl IntoView {
         })
     });
     let weight = move |id: u64| weights.with(|w| w.get(&id).copied().unwrap_or(LEAST_WEIGHT));
-    let total = move || {
-        band.with(|b| b.iter().map(|a| weight(a.id)).sum::<f64>())
-            .max(LEAST_WEIGHT)
-    };
+    let total = move || band.with(|b| b.iter().map(|a| weight(a.id)).sum::<f64>()).max(LEAST_WEIGHT);
     view! {
         <div class="frieze">
             <div class="frieze-inner" style=move || format!("--weight: {}", total())>
@@ -85,19 +73,13 @@ pub fn Frieze() -> impl IntoView {
 
 /// One block of the band: a beat is a cell; an act or a scene a title over
 /// the row of what it holds.
-fn block(
-    st: State,
-    b: Block,
-    weight: impl Fn(u64) -> f64 + Copy + Send + Sync + 'static,
-) -> AnyView {
+fn block(st: State, b: Block, weight: impl Fn(u64) -> f64 + Copy + Send + Sync + 'static) -> AnyView {
     let id = b.id;
     let grow = move || format!("flex-grow: {}", weight(id));
     let title = move || st.story.with(|s| s.label(id));
     if b.level == Level::Beat {
-        let warns = move || {
-            st.beat_index(id)
-                .is_some_and(|k| st.analysis.with(|a| a.warnings.iter().any(|w| w.beat == k)))
-        };
+        let warns =
+            move || st.beat_index(id).is_some_and(|k| st.analysis.with(|a| a.warnings.iter().any(|w| w.beat == k)));
         return view! {
             <button
                 class="cell beat-cell"
@@ -114,16 +96,8 @@ fn block(
         }
         .into_any();
     }
-    let level = if b.level == Level::Act {
-        "act-cell"
-    } else {
-        "scene-cell"
-    };
-    let number = if b.level == Level::Act {
-        format!("{} — ", b.label)
-    } else {
-        format!("{} ", b.label)
-    };
+    let level = if b.level == Level::Act { "act-cell" } else { "scene-cell" };
+    let number = if b.level == Level::Act { format!("{} — ", b.label) } else { format!("{} ", b.label) };
     view! {
         <div class=format!("cell {level}") style=grow class:sel=move || st.is_selected(id)>
             <button class="cell-title" title=move || format!("{number}{}", title()) on:click=move |_| st.reveal(id)>
@@ -164,13 +138,7 @@ fn Arcs(
             let (x2, _) = *m.get(d.payoff.0)?;
             Some(if d.setup.0 == d.payoff.0 {
                 let r = w * 0.3;
-                format!(
-                    "M {} 0 C {} 40, {} 40, {} 0",
-                    x1 - r,
-                    x1 - r,
-                    x1 + r,
-                    x1 + r
-                )
+                format!("M {} 0 C {} 40, {} 40, {} 0", x1 - r, x1 - r, x1 + r, x1 + r)
             } else {
                 let depth = (30.0 + 170.0 * (x2 - x1).abs() / total()).min(133.0);
                 format!("M {x1} 0 C {x1} {depth}, {x2} {depth}, {x2} 0")
@@ -178,11 +146,7 @@ fn Arcs(
         })
     };
     let name = move |d: &Dependency| {
-        let element = st.analysis.with(|a| {
-            a.elements
-                .get(d.element)
-                .map(|e| (e.name.clone(), e.key.clone()))
-        });
+        let element = st.analysis.with(|a| a.elements.get(d.element).map(|e| (e.name.clone(), e.key.clone())));
         element.unwrap_or_default()
     };
     let base = move || {
@@ -209,12 +173,7 @@ fn Arcs(
     };
     let lit = move || {
         dependencies
-            .with(|ds| {
-                ds.iter()
-                    .filter(|d| st.dependency_lit(d))
-                    .filter_map(path)
-                    .collect::<Vec<_>>()
-            })
+            .with(|ds| ds.iter().filter(|d| st.dependency_lit(d)).filter_map(path).collect::<Vec<_>>())
             .into_iter()
             .map(|shape| view! { <path class="lit" d=shape/> })
             .collect_view()
