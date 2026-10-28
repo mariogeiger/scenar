@@ -22,7 +22,7 @@ en temps réel, grâce au CRDT Yrs.
 ```
 cargo test --workspace   # le moteur, le modèle, le document partagé, le serveur
 trunk serve              # la page seule, http://localhost:8091
-./deploy.sh              # publie sur https://scenar.geiger.ink
+~/git/geiger-server/deploy scenar   # publie sur https://scenar.geiger.ink
 ```
 
 En production, Caddy sert `dist/` (toute adresse inconnue rend
