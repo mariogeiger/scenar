@@ -7,13 +7,16 @@
 //! [`room`]). Limits: 2 MiB a story, 20 new stories an hour from one
 //! address; nothing expires.
 //!
-//! Environment: `SCENAR_DATA`, the directory of the stories, and
-//! `SCENAR_PORT`, 4010 by default.
+//! It serves the listening socket systemd passes it (socket activation),
+//! else `127.0.0.1:SCENAR_PORT`. Environment: `SCENAR_DATA`, the directory of
+//! the stories, and `SCENAR_PORT`, 4010 by default.
 
 mod room;
 
 use std::collections::{HashMap, VecDeque};
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr};
+use std::os::fd::FromRawFd;
+use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -21,7 +24,7 @@ use std::time::{Duration, Instant};
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, State};
+use axum::extract::{DefaultBodyLimit, Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -57,13 +60,43 @@ async fn main() {
         .route("/api/stories/{id}/live", get(live))
         .layer(DefaultBodyLimit::max(MAX_BYTES))
         .with_state(app.clone());
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await.expect("the port is free");
-    println!("scenar-server on 127.0.0.1:{port}, stories in {}", app.data.display());
-    axum::serve(listener, router.into_make_service_with_connect_info::<SocketAddr>())
-        .with_graceful_shutdown(async { _ = tokio::signal::ctrl_c().await })
-        .await
-        .expect("the server runs");
+    println!("scenar-server: stories in {}", app.data.display());
+    match inherited_listener() {
+        Some(socket) => {
+            socket.set_nonblocking(true).expect("the socket is usable");
+            let listener = tokio::net::UnixListener::from_std(socket).expect("the socket is usable");
+            println!("scenar-server on the socket systemd passed");
+            axum::serve(listener, router).with_graceful_shutdown(stopped()).await
+        }
+        None => {
+            let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await.expect("the port is free");
+            println!("scenar-server on 127.0.0.1:{port}");
+            axum::serve(listener, router).with_graceful_shutdown(stopped()).await
+        }
+    }
+    .expect("the server runs");
     app.rooms.flush_all().await;
+}
+
+/// The one listening socket systemd passes this process, by the protocol of
+/// `sd_listen_fds`: `LISTEN_PID` names it, `LISTEN_FDS` counts the sockets,
+/// which begin at descriptor 3.
+fn inherited_listener() -> Option<UnixListener> {
+    let ours = std::env::var("LISTEN_PID").ok()?.parse::<u32>().ok()? == std::process::id();
+    let one = std::env::var("LISTEN_FDS").ok()? == "1";
+    // SAFETY: by the protocol, descriptor 3 is a listening socket this process owns.
+    (ours && one).then(|| unsafe { UnixListener::from_raw_fd(3) })
+}
+
+/// Resolves when the process is asked to stop: SIGINT, or SIGTERM, which
+/// systemd and Podman send.
+async fn stopped() {
+    use tokio::signal::unix::{SignalKind, signal};
+    let mut term = signal(SignalKind::terminate()).expect("SIGTERM can be awaited");
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        _ = term.recv() => {}
+    }
 }
 
 /// A fresh id, from the system's randomness, each character drawn evenly.
@@ -84,23 +117,19 @@ pub fn valid_id(id: &str) -> bool {
     id.len() == ID_LEN && id.bytes().all(|b| b.is_ascii_alphanumeric())
 }
 
-/// The address a request comes from: the first one Caddy forwards, else
-/// the peer's.
-fn client(headers: &HeaderMap, peer: SocketAddr) -> IpAddr {
+/// The address a request comes from, as Caddy forwards it. Only Caddy, or
+/// a local client in development, reaches the server; without the header the
+/// request is local.
+fn client(headers: &HeaderMap) -> IpAddr {
     headers
         .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.split(',').next())
         .and_then(|v| v.trim().parse().ok())
-        .unwrap_or(peer.ip())
+        .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
 }
 
-async fn create(
-    State(app): State<App>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Response {
+async fn create(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
     if body.len() > MAX_BYTES {
         return (StatusCode::PAYLOAD_TOO_LARGE, "story too large").into_response();
     }
@@ -111,7 +140,7 @@ async fn create(
             times.retain(|t| now.duration_since(*t) < WINDOW);
             !times.is_empty()
         });
-        let times = created.entry(client(&headers, peer)).or_default();
+        let times = created.entry(client(&headers)).or_default();
         if times.len() >= MAX_NEW {
             return (StatusCode::TOO_MANY_REQUESTS, "too many new stories this hour").into_response();
         }
