@@ -26,9 +26,9 @@ trunk serve              # la page seule, http://localhost:8091
 ```
 
 En production, Caddy sert `dist/` (toute adresse inconnue rend
-`index.html`) et passe `/api/*` à `scenar-server` (unité systemd
-utilisateur `geiger-scenar`, port 4010, scénarios dans
-`~/server/data/scenar/`).
+`index.html`) et passe `/api/*` à `scenar-server`, un conteneur sans réseau
+du compte `geiger` qui sert la socket que systemd lui passe (scénarios dans
+`~geiger/data/scenar/` ; voir `~/git/geiger-server`).
 
 ## Licence
 
